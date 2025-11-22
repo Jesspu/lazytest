@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -385,21 +384,17 @@ func (m *Model) triggerTest(node *filesystem.Node) tea.Cmd {
 	m.runningNodePath = node.Path
 	m.nodeStatus[node.Path] = StatusRunning
 
-	// Context detection
-	execRoot, err := runner.GetExecutionRoot(node.Path)
+	// Prepare test job
+	job, err := runner.PrepareJob(node.Path)
 	if err != nil {
 		m.output += "Error: Could not find package.json\n"
 		m.viewport.SetContent(m.output)
 		m.nodeStatus[node.Path] = StatusFail
 		return nil
 	}
-
-	config := runner.LoadConfig(execRoot)
-	relToRoot, _ := filepath.Rel(execRoot, node.Path)
-	cmdStr, args := runner.BuildCommandString(config.Command, relToRoot)
 	
 	return func() tea.Msg {
-		m.testRunner.Run(cmdStr, args, execRoot)
+		m.testRunner.Run(job.Command, job.Args, job.Root)
 		return nil
 	}
 }
