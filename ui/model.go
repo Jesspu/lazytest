@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -36,6 +38,9 @@ type Model struct {
 	ready      bool
 	showHelp   bool
 	
+	keys       KeyMap
+	help       help.Model
+	
 	// File System
 	rootPath   string
 	fileTree   *filesystem.Node
@@ -62,11 +67,15 @@ type TreeLoadedMsg *filesystem.Node
 
 func NewModel() Model {
 	cwd, _ := os.Getwd()
+	h := help.New()
+	h.ShowAll = true
 	return Model{
 		activePane: PaneExplorer,
 		rootPath:   cwd,
 		testRunner: runner.NewRunner(),
 		nodeStatus: make(map[string]TestStatus),
+		keys:       NewKeyMap(),
+		help:       h,
 	}
 }
 
@@ -87,27 +96,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
+		switch {
+		case key.Matches(msg, m.keys.Quit):
 			if m.watcher != nil {
 				m.watcher.Close()
 			}
 			return m, tea.Quit
-		case "?":
+		case key.Matches(msg, m.keys.Help):
 			m.showHelp = !m.showHelp
 			return m, nil
-		case "esc":
-			m.showHelp = false
-			return m, nil
-		case "tab":
+		case key.Matches(msg, m.keys.Tab):
 			if m.activePane == PaneExplorer {
 				m.activePane = PaneOutput
 			} else {
 				m.activePane = PaneExplorer
 			}
-		case "R":
+		case key.Matches(msg, m.keys.Refresh):
 			return m, m.refreshTree
-		case "r":
+		case key.Matches(msg, m.keys.ReRunLast):
 			if m.lastRunNode != nil {
 				return m, m.triggerTest(m.lastRunNode)
 			}
@@ -115,16 +121,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle pane-specific keys
 		if m.activePane == PaneExplorer {
-			switch msg.String() {
-			case "k", "up":
+			switch {
+			case key.Matches(msg, m.keys.Up):
 				if m.cursor > 0 {
 					m.cursor--
 				}
-			case "j", "down":
+			case key.Matches(msg, m.keys.Down):
 				if m.cursor < len(m.flatNodes)-1 {
 					m.cursor++
 				}
-			case "enter":
+			case key.Matches(msg, m.keys.Enter):
 				if m.cursor < len(m.flatNodes) {
 					node := m.flatNodes[m.cursor]
 					if !node.IsDir {
@@ -141,6 +147,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.help.Width = msg.Width
 		
 		// Calculate available space
 		// Width: (Total / 2) - Border(2) - Padding(2) = Total/2 - 4
@@ -420,37 +427,13 @@ func (m *Model) flattenNodes() {
 
 func (m Model) helpView() string {
 	title := titleStyle.Render("HELP")
-	
-	keys := []struct {
-		key  string
-		desc string
-	}{
-		{"j / ↓", "Move down"},
-		{"k / ↑", "Move up"},
-		{"Enter", "Run test"},
-		{"Tab", "Switch pane"},
-		{"r", "Re-run last test"},
-		{"R", "Refresh file tree"},
-		{"?", "Toggle help"},
-		{"q", "Quit"},
-	}
-
-	var b strings.Builder
-	b.WriteString(title + "\n\n")
-
-	for _, k := range keys {
-		key := lipgloss.NewStyle().Foreground(highlight).Bold(true).Width(10).Render(k.key)
-		desc := lipgloss.NewStyle().Foreground(subtle).Render(k.desc)
-		b.WriteString(fmt.Sprintf("%s %s\n", key, desc))
-	}
-
-	b.WriteString("\nPress ? or Esc to close")
+	helpView := m.help.View(m.keys)
 
 	return lipgloss.Place(
-m.width,
-m.height,
-lipgloss.Center,
-lipgloss.Center,
-paneStyle.Render(b.String()),
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		paneStyle.Render(fmt.Sprintf("%s\n\n%s", title, helpView)),
 	)
 }
