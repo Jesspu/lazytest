@@ -1,0 +1,104 @@
+# LazyTest
+
+LazyTest is a terminal user interface (TUI) for running tests in TypeScript and JavaScript projects, heavily inspired by the excellent [lazygit](https://github.com/jesseduffield/lazygit). It provides a fast, keyboard-centric workflow for navigating test files, executing them, and viewing results instantly.
+
+![LazyTest Screenshot](media/example.png)
+
+## Features
+
+*   **Vim-style Navigation**: Navigate your file tree with `j`, `k`, `h`, `l`.
+*   **Instant Feedback**: Real-time output streaming with ANSI color support.
+*   **File Watching**: Automatically detects new test files and updates the tree.
+*   **Context Awareness**: Automatically finds the nearest `package.json` to run tests in the correct context (great for monorepos).
+*   **Status Indicators**: Visual feedback for running (⏳), passed (✅), and failed (❌) tests.
+*   **Customizable**: Configure custom test commands via `.lazytest.json`.
+
+## Quick Start
+
+### Prerequisites
+
+*   [Go](https://go.dev/dl/) (1.21 or later recommended)
+*   A JavaScript/TypeScript project with Jest installed.
+
+### Installation
+
+Clone the repository and build the binary:
+
+```bash
+git clone https://github.com/jesspatton/lazytest.git
+cd lazytest
+go build -o lazytest .
+```
+
+### Usage
+
+Navigate to your project directory and run the binary:
+
+```bash
+./lazytest
+```
+
+(Optional) Move the binary to your PATH to run it from anywhere:
+
+```bash
+mv lazytest /usr/local/bin/
+```
+
+### Keybindings
+
+| Key | Action |
+| :--- | :--- |
+| `j` / `↓` | Move cursor down |
+| `k` / `↑` | Move cursor up |
+| `Enter` | Run the selected test file |
+| `Tab` | Switch between File Explorer and Output panes |
+| `r` | Re-run the last executed test |
+| `R` | Refresh the file tree |
+| `?` | Toggle Help Menu |
+| `q` / `Ctrl+C` | Quit |
+
+## Configuration & Test Runner Support
+
+By default, LazyTest attempts to run tests using:
+```bash
+npx jest <relative_path_to_file> --colors
+```
+
+It automatically detects the execution root by searching up the directory tree for a `package.json` file.
+
+### Custom Configuration
+
+You can override the default test command by creating a `.lazytest.json` file in your project root (where `package.json` is located).
+
+**Example `.lazytest.json`:**
+
+```json
+{
+  "command": "npm test --"
+}
+```
+
+With this configuration, LazyTest will execute: `npm test -- <relative_path_to_file>`.
+
+## Tech Stack & Architecture
+
+LazyTest is built with Go and uses the [Charm](https://charm.sh/) ecosystem for its TUI components.
+
+*   **Language**: Go (Golang)
+*   **TUI Framework**: [Bubbletea](https://github.com/charmbracelet/bubbletea) (The Elm Architecture for Go)
+*   **Styling**: [Lipgloss](https://github.com/charmbracelet/lipgloss) (CSS-like styling)
+*   **Components**: [Bubbles](https://github.com/charmbracelet/bubbles) (Viewport, etc.)
+*   **File Watching**: [fsnotify](https://github.com/fsnotify/fsnotify)
+
+### Project Structure
+
+*   `main.go`: Entry point. Initializes the Bubbletea program.
+*   `ui/`: Contains the TUI logic.
+    *   `model.go`: The core application state, update loop, and view rendering.
+    *   `styles.go`: Lipgloss style definitions.
+*   `runner/`: Handles test execution.
+    *   `runner.go`: Manages `exec.Cmd`, process cancellation, and output streaming.
+    *   `config.go`: Handles `package.json` discovery and `.lazytest.json` parsing.
+*   `filesystem/`: File system operations.
+    *   `walker.go`: Recursive directory walking to build the test tree.
+    *   `watcher.go`: `fsnotify` implementation for detecting file changes.
