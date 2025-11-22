@@ -31,31 +31,31 @@ const (
 )
 
 type Model struct {
+	// UI State
 	activePane Pane
 	width      int
 	height     int
 	ready      bool
 	showHelp   bool
+	cursor     int
+	viewport   viewport.Model
 	
+	// Components
 	keys       KeyMap
 	help       help.Model
 	
-	// File System
+	// Data / Dependencies
 	rootPath   string
 	fileTree   *filesystem.Node
-	flatNodes  []*filesystem.Node // Flattened list for navigation
-	cursor     int
+	flatNodes  []*filesystem.Node
 	watcher    *filesystem.Watcher
-
-	// Runner
-	testRunner      *runner.Runner
+	testRunner *runner.Runner
+	
+	// Application State
 	output          string
-	viewport        viewport.Model
 	runningNodePath string
 	lastRunNode     *filesystem.Node
-	
-	// State
-	nodeStatus map[string]TestStatus
+	nodeStatus      map[string]TestStatus
 }
 
 // Messages
@@ -257,15 +257,6 @@ func (m *Model) startWatcher() tea.Msg {
 		return nil
 	}
 	m.watcher = w
-	
-	// Listen for events
-	go func() {
-		for range w.Events {
-			// We can't send directly to program update from here easily without the program reference
-			// But we can't access program here.
-			// Wait, the standard way is to have a Cmd that waits on the channel.
-		}
-	}()
 	
 	return m.waitForWatcherEvents()
 }
