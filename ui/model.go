@@ -214,85 +214,7 @@ func (m Model) View() string {
 	paneHeight := m.height - 4
 
 	// Explorer View
-	var explorerView strings.Builder
-	explorerView.WriteString(titleStyle.Render("TEST EXPLORER") + "\n\n")
-	
-	if m.fileTree == nil {
-		explorerView.WriteString("Scanning...")
-	} else {
-		// Render flattened list
-		// We need to limit the view to the height (scrolling).
-		// For MVP, just slice around cursor or show all if fits.
-		// Let's implement basic scrolling window.
-		start := 0
-		end := len(m.flatNodes)
-		
-		if len(m.flatNodes) > paneHeight {
-			if m.cursor < paneHeight/2 {
-				start = 0
-				end = paneHeight
-			} else if m.cursor > len(m.flatNodes)-paneHeight/2 {
-				start = len(m.flatNodes) - paneHeight
-				end = len(m.flatNodes)
-			} else {
-				start = m.cursor - paneHeight/2
-				end = m.cursor + paneHeight/2
-			}
-		}
-
-		for i := start; i < end; i++ {
-			if i >= len(m.flatNodes) {
-				break
-			}
-			node := m.flatNodes[i]
-			cursor := " "
-			if m.cursor == i {
-				cursor = ">"
-			}
-			
-			// Indentation
-			depth := strings.Count(node.Path, string(os.PathSeparator)) - strings.Count(m.rootPath, string(os.PathSeparator))
-			indent := strings.Repeat("  ", depth)
-			
-			icon := "•"
-			if node.IsDir {
-				icon = "📁"
-			} else {
-				status, ok := m.nodeStatus[node.Path]
-				if ok {
-					switch status {
-					case StatusRunning:
-						icon = "⏳"
-					case StatusPass:
-						icon = "✅"
-					case StatusFail:
-						icon = "❌"
-					default:
-						icon = "📄"
-					}
-				} else {
-					icon = "📄"
-				}
-			}
-
-			line := fmt.Sprintf("%s %s%s %s", cursor, indent, icon, node.Name)
-			
-			if m.cursor == i {
-				explorerView.WriteString(lipgloss.NewStyle().Foreground(highlight).Render(line) + "\n")
-			} else {
-				explorerView.WriteString(line + "\n")
-			}
-		}
-	}
-
-	explorerStyle := paneStyle
-	if m.activePane == PaneExplorer {
-		explorerStyle = activePaneStyle
-	}
-	explorerRender := explorerStyle.
-		Width(paneWidth).
-		Height(paneHeight).
-		Render(explorerView.String())
+	explorerRender := m.renderExplorer(paneWidth, paneHeight)
 
 	// Output View
 	var outputView strings.Builder
@@ -314,7 +236,7 @@ func (m Model) View() string {
 		Render(outputView.String())
 
 	panes := lipgloss.JoinHorizontal(lipgloss.Top, explorerRender, outputRender)
-	footer := statusStyle.Render("? Help  q Quit  Tab Switch Pane  Enter Run  R Refresh")
+	footer := m.renderFooter()
 
 	return lipgloss.JoinVertical(lipgloss.Left, panes, footer)
 }
