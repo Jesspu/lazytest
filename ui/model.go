@@ -203,7 +203,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	if m.showHelp {
-		return m.helpView()
+		return m.renderHelp()
 	}
 
 	if m.width == 0 {
@@ -333,15 +333,4 @@ func (m *Model) flattenNodes() {
 	traverse(m.fileTree)
 }
 
-func (m Model) helpView() string {
-	title := titleStyle.Render("HELP")
-	helpView := m.help.View(m.keys)
 
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Center,
-		lipgloss.Center,
-		paneStyle.Render(fmt.Sprintf("%s\n\n%s", title, helpView)),
-	)
-}
