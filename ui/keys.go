@@ -2,6 +2,7 @@ package ui
 
 import "github.com/charmbracelet/bubbles/key"
 
+// KeyMap defines the keybindings for the application.
 type KeyMap struct {
 	Up          key.Binding
 	Down        key.Binding
@@ -13,6 +14,7 @@ type KeyMap struct {
 	Quit        key.Binding
 }
 
+// NewKeyMap returns a set of default keybindings.
 func NewKeyMap() KeyMap {
 	return KeyMap{
 		Up: key.NewBinding(

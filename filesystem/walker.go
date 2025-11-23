@@ -56,6 +56,7 @@ func Walk(root string) (*Node, error) {
 	return rootNode, err
 }
 
+// shouldIgnore checks if a directory should be ignored during traversal.
 func shouldIgnore(name string) bool {
 	ignored := []string{"node_modules", ".git", "dist", "build", "coverage"}
 	for _, i := range ignored {
@@ -66,6 +67,7 @@ func shouldIgnore(name string) bool {
 	return false
 }
 
+// isTestFile checks if a file is a test file based on its extension.
 func isTestFile(name string) bool {
 	return strings.HasSuffix(name, ".test.ts") ||
 		strings.HasSuffix(name, ".test.js") ||

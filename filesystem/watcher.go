@@ -9,12 +9,14 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// Watcher monitors the file system for changes.
 type Watcher struct {
 	fsWatcher *fsnotify.Watcher
 	Events    chan struct{} // Signal to refresh the tree
 	done      chan struct{}
 }
 
+// NewWatcher creates a new Watcher for the given root directory.
 func NewWatcher(root string) (*Watcher, error) {
 	fsWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -52,6 +54,7 @@ func NewWatcher(root string) (*Watcher, error) {
 	return w, nil
 }
 
+// Close stops the watcher and releases resources.
 func (w *Watcher) Close() {
 	close(w.done)
 	w.fsWatcher.Close()

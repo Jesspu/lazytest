@@ -2,6 +2,7 @@ package ui
 
 import "github.com/jesspatton/lazytest/filesystem"
 
+// flattenNodes performs a depth-first traversal to create a flat list of nodes.
 func flattenNodes(tree *filesystem.Node) []*filesystem.Node {
 	nodes := []*filesystem.Node{}
 	if tree == nil {

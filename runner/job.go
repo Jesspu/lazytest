@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 )
 
+// TestJob represents a test execution job.
 type TestJob struct {
 	Command string
 	Args    []string

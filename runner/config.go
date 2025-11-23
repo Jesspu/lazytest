@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// Config holds the configuration for the test runner.
 type Config struct {
 	Command string `json:"command"`
 }

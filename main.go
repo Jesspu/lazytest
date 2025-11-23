@@ -8,6 +8,7 @@ import (
 	"github.com/jesspatton/lazytest/ui"
 )
 
+// main is the entry point of the application.
 func main() {
 	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {

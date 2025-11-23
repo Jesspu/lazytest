@@ -10,6 +10,7 @@ import (
 	"syscall"
 )
 
+// Runner manages the execution of test commands.
 type Runner struct {
 	mu      sync.Mutex
 	currCmd *exec.Cmd
@@ -18,6 +19,7 @@ type Runner struct {
 	Status  chan error  // Channel to report completion/error
 }
 
+// NewRunner creates a new Runner instance.
 func NewRunner() *Runner {
 	return &Runner{
 		Output: make(chan string, 100), // Buffered to prevent blocking

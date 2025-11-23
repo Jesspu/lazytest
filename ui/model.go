@@ -14,22 +14,31 @@ import (
 	"github.com/jesspatton/lazytest/runner"
 )
 
+// Pane represents a distinct section of the UI.
 type Pane int
 
 const (
+	// PaneExplorer is the file explorer pane.
 	PaneExplorer Pane = iota
+	// PaneOutput is the test output pane.
 	PaneOutput
 )
 
+// TestStatus represents the current state of a test file.
 type TestStatus int
 
 const (
+	// StatusIdle indicates the test is not running.
 	StatusIdle TestStatus = iota
+	// StatusRunning indicates the test is currently executing.
 	StatusRunning
+	// StatusPass indicates the last run passed.
 	StatusPass
+	// StatusFail indicates the last run failed.
 	StatusFail
 )
 
+// Model represents the application state for the Bubbletea program.
 type Model struct {
 	// UI State
 	activePane Pane
@@ -59,11 +68,20 @@ type Model struct {
 }
 
 // Messages
+
+// WatcherMsg indicates a file system event occurred.
 type WatcherMsg struct{}
+
+// OutputMsg carries a line of output from the test runner.
 type OutputMsg string
+
+// TestResultMsg carries the final result (error or nil) of a test run.
 type TestResultMsg struct{ Err error }
+
+// TreeLoadedMsg carries the new file tree after a refresh.
 type TreeLoadedMsg *filesystem.Node
 
+// NewModel creates and initializes a new Model.
 func NewModel() Model {
 	cwd, _ := os.Getwd()
 	h := help.New()
@@ -78,6 +96,7 @@ func NewModel() Model {
 	}
 }
 
+// Init initializes the Bubbletea program.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.refreshTree,
@@ -87,6 +106,7 @@ func (m Model) Init() tea.Cmd {
 	)
 }
 
+// Update handles incoming messages and updates the model state.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
@@ -201,6 +221,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+// View renders the UI based on the current state.
 func (m Model) View() string {
 	if m.showHelp {
 		return m.renderHelp()
@@ -246,7 +267,7 @@ func (m Model) View() string {
 func (m *Model) refreshTree() tea.Msg {
 	tree, err := filesystem.Walk(m.rootPath)
 	if err != nil {
-		return nil // Handle error
+		return nil 
 	}
 	return TreeLoadedMsg(tree)
 }
@@ -297,7 +318,6 @@ func (m *Model) triggerTest(node *filesystem.Node) tea.Cmd {
 	m.runningNodePath = node.Path
 	m.nodeStatus[node.Path] = StatusRunning
 
-	// Prepare test job
 	job, err := runner.PrepareJob(node.Path)
 	if err != nil {
 		m.output += "Error: Could not find package.json\n"
