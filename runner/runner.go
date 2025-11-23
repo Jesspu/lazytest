@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -37,16 +38,20 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 		// and the fact that we are starting a new one.
 		// Ideally we should wait for the previous Wait() to return to ensure cleanup.
 	}
-	
+
 	// Create new context
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
-	
+
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = cwd
 	// Set process group to ensure we can kill children if needed (though Context handles the main one)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	
+
+	// Force color output
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "FORCE_COLOR=1", "CLICOLOR_FORCE=1")
+
 	r.currCmd = cmd
 	r.mu.Unlock()
 
@@ -89,7 +94,7 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 		err := cmd.Wait()
 		// Then wait for output streaming to finish
 		wg.Wait()
-		
+
 		r.mu.Lock()
 		// Only report status if this is still the current command
 		shouldReport := false
@@ -99,7 +104,7 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 			shouldReport = true
 		}
 		r.mu.Unlock()
-		
+
 		if shouldReport {
 			r.Status <- err
 		}
