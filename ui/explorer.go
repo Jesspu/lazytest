@@ -12,12 +12,12 @@ import (
 func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	var explorerView strings.Builder
 	explorerView.WriteString(titleStyle.Render("TEST EXPLORER") + "\n\n")
-	
+
 	if m.fileTree == nil {
 		explorerView.WriteString("Scanning...")
 	} else {
 		start, end := m.calculateVisibleRange(paneHeight)
-		
+
 		for i := start; i < end; i++ {
 			if i >= len(m.flatNodes) {
 				break
@@ -31,16 +31,22 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	if m.activePane == PaneExplorer {
 		explorerStyle = activePaneStyle
 	}
+
+	view := explorerView.String()
+	if m.searchMode {
+		view += "\n" + m.searchInput.View()
+	}
+
 	return explorerStyle.
 		Width(paneWidth).
 		Height(paneHeight).
-		Render(explorerView.String())
+		Render(view)
 }
 
 func (m Model) calculateVisibleRange(paneHeight int) (int, int) {
 	start := 0
 	end := len(m.flatNodes)
-	
+
 	if len(m.flatNodes) > paneHeight {
 		if m.cursor < paneHeight/2 {
 			start = 0
@@ -61,13 +67,38 @@ func (m Model) renderNode(b *strings.Builder, node *filesystem.Node, index int) 
 	if m.cursor == index {
 		cursor = ">"
 	}
-	
+
 	depth := strings.Count(node.Path, string(os.PathSeparator)) - strings.Count(m.rootPath, string(os.PathSeparator))
 	indent := strings.Repeat("  ", depth)
-	
+
 	icon := m.getNodeIcon(node)
-	line := fmt.Sprintf("%s %s%s %s", cursor, indent, icon, node.Name)
-	
+
+	name := node.Name
+	// Highlight search matches
+	if m.searchMode && m.searchInput.Value() != "" {
+		lowerName := strings.ToLower(name)
+		lowerQuery := strings.ToLower(m.searchInput.Value())
+		if strings.Contains(lowerName, lowerQuery) {
+			// Find all occurrences
+			var sb strings.Builder
+			lastIdx := 0
+			for {
+				idx := strings.Index(lowerName[lastIdx:], lowerQuery)
+				if idx == -1 {
+					sb.WriteString(name[lastIdx:])
+					break
+				}
+				idx += lastIdx
+				sb.WriteString(name[lastIdx:idx])
+				sb.WriteString(lipgloss.NewStyle().Background(lipgloss.Color("212")).Foreground(lipgloss.Color("0")).Render(name[idx : idx+len(lowerQuery)]))
+				lastIdx = idx + len(lowerQuery)
+			}
+			name = sb.String()
+		}
+	}
+
+	line := fmt.Sprintf("%s %s%s %s", cursor, indent, icon, name)
+
 	if m.cursor == index {
 		b.WriteString(lipgloss.NewStyle().Foreground(highlight).Render(line) + "\n")
 	} else {
@@ -79,12 +110,12 @@ func (m Model) getNodeIcon(node *filesystem.Node) string {
 	if node.IsDir {
 		return "📁"
 	}
-	
+
 	status, ok := m.nodeStatus[node.Path]
 	if !ok {
 		return "📄"
 	}
-	
+
 	switch status {
 	case StatusRunning:
 		return "⏳"

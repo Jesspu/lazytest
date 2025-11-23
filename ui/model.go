@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -48,18 +49,25 @@ type Model struct {
 	showHelp   bool
 	cursor     int
 	viewport   viewport.Model
-	
+
+	// Search State
+	searchMode        bool
+	searchFocus       bool
+	searchInput       textinput.Model
+	searchMatches     []int
+	currentMatchIndex int
+
 	// Components
-	keys       KeyMap
-	help       help.Model
-	
+	keys KeyMap
+	help help.Model
+
 	// Data / Dependencies
 	rootPath   string
 	fileTree   *filesystem.Node
 	flatNodes  []*filesystem.Node
 	watcher    *filesystem.Watcher
 	testRunner *runner.Runner
-	
+
 	// Application State
 	output          string
 	runningNodePath string
@@ -86,13 +94,20 @@ func NewModel() Model {
 	cwd, _ := os.Getwd()
 	h := help.New()
 	h.ShowAll = true
+	ti := textinput.New()
+	ti.Placeholder = "Search..."
+	ti.Prompt = "/"
+	ti.CharLimit = 156
+	ti.Width = 20
+
 	return Model{
-		activePane: PaneExplorer,
-		rootPath:   cwd,
-		testRunner: runner.NewRunner(),
-		nodeStatus: make(map[string]TestStatus),
-		keys:       NewKeyMap(),
-		help:       h,
+		activePane:  PaneExplorer,
+		rootPath:    cwd,
+		testRunner:  runner.NewRunner(),
+		nodeStatus:  make(map[string]TestStatus),
+		keys:        NewKeyMap(),
+		help:        h,
+		searchInput: ti,
 	}
 }
 
@@ -115,45 +130,128 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, m.keys.Quit):
-			if m.watcher != nil {
-				m.watcher.Close()
-			}
-			return m, tea.Quit
-		case key.Matches(msg, m.keys.Help):
-			m.showHelp = !m.showHelp
-			return m, nil
-		case key.Matches(msg, m.keys.Tab):
-			if m.activePane == PaneExplorer {
-				m.activePane = PaneOutput
-			} else {
-				m.activePane = PaneExplorer
-			}
-		case key.Matches(msg, m.keys.Refresh):
-			return m, m.refreshTree
-		case key.Matches(msg, m.keys.ReRunLast):
-			if m.lastRunNode != nil {
-				return m, m.triggerTest(m.lastRunNode)
+		// Handle global keys (except when in search mode, some keys might be overridden)
+		if !m.searchMode {
+			switch {
+			case key.Matches(msg, m.keys.Quit):
+				if m.watcher != nil {
+					m.watcher.Close()
+				}
+				return m, tea.Quit
+			case key.Matches(msg, m.keys.Help):
+				m.showHelp = !m.showHelp
+				return m, nil
+			case key.Matches(msg, m.keys.Tab):
+				if m.activePane == PaneExplorer {
+					m.activePane = PaneOutput
+				} else {
+					m.activePane = PaneExplorer
+				}
+			case key.Matches(msg, m.keys.Refresh):
+				return m, m.refreshTree
+			case key.Matches(msg, m.keys.ReRunLast):
+				if m.lastRunNode != nil {
+					return m, m.triggerTest(m.lastRunNode)
+				}
 			}
 		}
 
 		// Handle pane-specific keys
 		if m.activePane == PaneExplorer {
-			switch {
-			case key.Matches(msg, m.keys.Up):
-				if m.cursor > 0 {
-					m.cursor--
+			if m.searchMode {
+				if m.searchFocus {
+					// Typing Mode
+					switch {
+					case key.Matches(msg, m.keys.ExitSearch):
+						m.searchMode = false
+						m.searchFocus = false
+						m.searchInput.Blur()
+						m.searchInput.Reset()
+						m.searchMatches = nil
+						return m, nil
+					case key.Matches(msg, m.keys.Enter):
+						// Switch to Navigation Mode
+						m.searchFocus = false
+						m.searchInput.Blur()
+						// Jump to first match if exists
+						if len(m.searchMatches) > 0 {
+							m.currentMatchIndex = 0
+							m.cursor = m.searchMatches[0]
+						}
+						return m, nil
+					default:
+						// Forward to text input
+						var cmd tea.Cmd
+						m.searchInput, cmd = m.searchInput.Update(msg)
+
+						// Update matches
+						m.searchMatches = []int{}
+						if m.searchInput.Value() != "" {
+							for i, node := range m.flatNodes {
+								if strings.Contains(strings.ToLower(node.Name), strings.ToLower(m.searchInput.Value())) {
+									m.searchMatches = append(m.searchMatches, i)
+								}
+							}
+						}
+						return m, cmd
+					}
+				} else {
+					// Navigation Mode
+					switch {
+					case key.Matches(msg, m.keys.ExitSearch):
+						m.searchMode = false
+						m.searchInput.Reset()
+						m.searchMatches = nil
+						return m, nil
+					case key.Matches(msg, m.keys.Search):
+						// Re-enter typing mode?
+						m.searchFocus = true
+						m.searchInput.Focus()
+						return m, textinput.Blink
+					case key.Matches(msg, m.keys.NextMatch):
+						if len(m.searchMatches) > 0 {
+							m.currentMatchIndex = (m.currentMatchIndex + 1) % len(m.searchMatches)
+							m.cursor = m.searchMatches[m.currentMatchIndex]
+						}
+					case key.Matches(msg, m.keys.PrevMatch):
+						if len(m.searchMatches) > 0 {
+							m.currentMatchIndex = (m.currentMatchIndex - 1 + len(m.searchMatches)) % len(m.searchMatches)
+							m.cursor = m.searchMatches[m.currentMatchIndex]
+						}
+					case key.Matches(msg, m.keys.Enter):
+						// Select/Run the file
+						m.searchMode = false
+						m.searchInput.Reset()
+						m.searchMatches = nil
+						if m.cursor < len(m.flatNodes) {
+							node := m.flatNodes[m.cursor]
+							if !node.IsDir {
+								return m, m.triggerTest(node)
+							}
+						}
+					}
 				}
-			case key.Matches(msg, m.keys.Down):
-				if m.cursor < len(m.flatNodes)-1 {
-					m.cursor++
-				}
-			case key.Matches(msg, m.keys.Enter):
-				if m.cursor < len(m.flatNodes) {
-					node := m.flatNodes[m.cursor]
-					if !node.IsDir {
-						return m, m.triggerTest(node)
+			} else {
+				switch {
+				case key.Matches(msg, m.keys.Search):
+					m.searchMode = true
+					m.searchFocus = true
+					m.searchInput.Focus()
+					return m, textinput.Blink
+				case key.Matches(msg, m.keys.Up):
+					if m.cursor > 0 {
+						m.cursor--
+					}
+				case key.Matches(msg, m.keys.Down):
+					if m.cursor < len(m.flatNodes)-1 {
+						m.cursor++
+					}
+				case key.Matches(msg, m.keys.Enter):
+					if m.cursor < len(m.flatNodes) {
+						node := m.flatNodes[m.cursor]
+						if !node.IsDir {
+							return m, m.triggerTest(node)
+						}
 					}
 				}
 			}
@@ -167,7 +265,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.help.Width = msg.Width
-		
+
 		// Calculate available space
 		// Width: (Total / 2) - Border(2) - Padding(2) = Total/2 - 4
 		paneWidth := (m.width / 2) - 4
@@ -240,7 +338,7 @@ func (m Model) View() string {
 	// Output View
 	var outputView strings.Builder
 	outputView.WriteString(titleStyle.Render("OUTPUT") + "\n\n")
-	
+
 	if !m.ready {
 		outputView.WriteString("Initializing...")
 	} else {
@@ -267,7 +365,7 @@ func (m Model) View() string {
 func (m *Model) refreshTree() tea.Msg {
 	tree, err := filesystem.Walk(m.rootPath)
 	if err != nil {
-		return nil 
+		return nil
 	}
 	return TreeLoadedMsg(tree)
 }
@@ -278,7 +376,7 @@ func (m *Model) startWatcher() tea.Msg {
 		return nil
 	}
 	m.watcher = w
-	
+
 	return m.waitForWatcherEvents()
 }
 
@@ -314,7 +412,7 @@ func (m *Model) triggerTest(node *filesystem.Node) tea.Cmd {
 	m.output = fmt.Sprintf("Running %s...\n", node.Name)
 	m.viewport.SetContent(m.output)
 	m.viewport.GotoBottom()
-	
+
 	m.runningNodePath = node.Path
 	m.nodeStatus[node.Path] = StatusRunning
 
@@ -325,7 +423,7 @@ func (m *Model) triggerTest(node *filesystem.Node) tea.Cmd {
 		m.nodeStatus[node.Path] = StatusFail
 		return nil
 	}
-	
+
 	return func() tea.Msg {
 		m.testRunner.Run(job.Command, job.Args, job.Root)
 		return nil

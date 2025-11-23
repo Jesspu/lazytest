@@ -4,14 +4,20 @@ import "github.com/charmbracelet/bubbles/key"
 
 // KeyMap defines the keybindings for the application.
 type KeyMap struct {
-	Up          key.Binding
-	Down        key.Binding
-	Enter       key.Binding
-	Tab         key.Binding
-	ReRunLast   key.Binding
-	Refresh     key.Binding
-	Help        key.Binding
-	Quit        key.Binding
+	Up        key.Binding
+	Down      key.Binding
+	Enter     key.Binding
+	Tab       key.Binding
+	ReRunLast key.Binding
+	Refresh   key.Binding
+	Help      key.Binding
+	Quit      key.Binding
+
+	// Search Keys
+	Search     key.Binding
+	NextMatch  key.Binding
+	PrevMatch  key.Binding
+	ExitSearch key.Binding
 }
 
 // NewKeyMap returns a set of default keybindings.
@@ -48,6 +54,22 @@ func NewKeyMap() KeyMap {
 		Quit: key.NewBinding(
 			key.WithKeys("q", "ctrl+c"),
 			key.WithHelp("q", "quit"),
+		),
+		Search: key.NewBinding(
+			key.WithKeys("/"),
+			key.WithHelp("/", "search"),
+		),
+		NextMatch: key.NewBinding(
+			key.WithKeys("n"),
+			key.WithHelp("n", "next match"),
+		),
+		PrevMatch: key.NewBinding(
+			key.WithKeys("N"),
+			key.WithHelp("N", "prev match"),
+		),
+		ExitSearch: key.NewBinding(
+			key.WithKeys("esc"),
+			key.WithHelp("esc", "exit search"),
 		),
 	}
 }
