@@ -29,33 +29,43 @@ func GetExecutionRoot(testFilePath string) (string, error) {
 	}
 }
 
-// LoadConfig looks for .lazytest.json in the project root.
+// LoadConfig looks for .lazytest.json starting from root and walking up.
 // If not found, returns default config.
 func LoadConfig(root string) Config {
 	defaultConfig := Config{
 		Command: "npx jest <path> --colors",
 	}
 
-	configFile := filepath.Join(root, ".lazytest.json")
-	if _, err := os.Stat(configFile); os.IsNotExist(err) {
-		return defaultConfig
+	dir := root
+	for {
+		configFile := filepath.Join(dir, ".lazytest.json")
+		if _, err := os.Stat(configFile); err == nil {
+			// Found it
+			data, err := os.ReadFile(configFile)
+			if err != nil {
+				return defaultConfig
+			}
+
+			var config Config
+			if err := json.Unmarshal(data, &config); err != nil {
+				return defaultConfig
+			}
+
+			if config.Command == "" {
+				config.Command = defaultConfig.Command
+			}
+			return config
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			// Reached system root, not found
+			break
+		}
+		dir = parent
 	}
 
-	data, err := os.ReadFile(configFile)
-	if err != nil {
-		return defaultConfig
-	}
-
-	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return defaultConfig
-	}
-
-	if config.Command == "" {
-		config.Command = defaultConfig.Command
-	}
-
-	return config
+	return defaultConfig
 }
 
 // BuildCommandString constructs the final command string to execute.
