@@ -173,7 +173,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case TreeLoadedMsg:
 		m.fileTree = msg
-		m.flattenNodes()
+		m.flatNodes = flattenNodes(m.fileTree)
 		return m, nil
 
 	case OutputMsg:
@@ -311,26 +311,3 @@ func (m *Model) triggerTest(node *filesystem.Node) tea.Cmd {
 		return nil
 	}
 }
-
-// Helpers
-
-func (m *Model) flattenNodes() {
-	m.flatNodes = []*filesystem.Node{}
-	if m.fileTree == nil {
-		return
-	}
-	// Depth-first traversal
-	var traverse func(*filesystem.Node)
-	traverse = func(n *filesystem.Node) {
-		// Don't add root itself if it's just "."
-		if n != m.fileTree {
-			m.flatNodes = append(m.flatNodes, n)
-		}
-		for _, child := range n.Children {
-			traverse(child)
-		}
-	}
-	traverse(m.fileTree)
-}
-
-
