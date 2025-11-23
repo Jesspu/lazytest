@@ -72,7 +72,11 @@ func isTestFile(name string) bool {
 	return strings.HasSuffix(name, ".test.ts") ||
 		strings.HasSuffix(name, ".test.js") ||
 		strings.HasSuffix(name, ".spec.ts") ||
-		strings.HasSuffix(name, ".spec.js")
+		strings.HasSuffix(name, ".spec.js") ||
+		strings.HasSuffix(name, ".test.tsx") ||
+		strings.HasSuffix(name, ".test.jsx") ||
+		strings.HasSuffix(name, ".spec.tsx") ||
+		strings.HasSuffix(name, ".spec.jsx")
 }
 
 // addPathToTree adds a file path to the tree, creating intermediate directory nodes as needed
