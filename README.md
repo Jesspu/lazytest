@@ -94,11 +94,17 @@ LazyTest is built with Go and uses the [Charm](https://charm.sh/) ecosystem for 
 
 *   `main.go`: Entry point. Initializes the Bubbletea program.
 *   `ui/`: Contains the TUI logic.
-    *   `model.go`: The core application state, update loop, and view rendering.
+    *   `model.go`: The core application state and update loop.
+    *   `explorer.go`: File explorer view logic.
+    *   `footer.go`: Status bar/footer view logic.
+    *   `help.go`: Help menu view logic.
+    *   `keys.go`: Keybinding definitions.
     *   `styles.go`: Lipgloss style definitions.
+    *   `utils.go`: Helper functions.
 *   `runner/`: Handles test execution.
     *   `runner.go`: Manages `exec.Cmd`, process cancellation, and output streaming.
     *   `config.go`: Handles `package.json` discovery and `.lazytest.json` parsing.
+    *   `job.go`: Encapsulates test job preparation logic.
 *   `filesystem/`: File system operations.
     *   `walker.go`: Recursive directory walking to build the test tree.
     *   `watcher.go`: `fsnotify` implementation for detecting file changes.
