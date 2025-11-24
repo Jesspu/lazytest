@@ -47,7 +47,23 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(highlight).
 			Width(paneWidth - 4) // Account for border width
-		currentView += searchStyle.Render(m.searchInput.View())
+
+		searchContent := m.searchInput.View()
+		if !m.searchFocus {
+			hints := "n: next • N: prev • Esc: exit"
+			hintsStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+			// Calculate available space
+			availableWidth := paneWidth - 6 // -4 for outer margin, -2 for border
+			contentWidth := lipgloss.Width(searchContent)
+			hintsWidth := lipgloss.Width(hints)
+
+			if contentWidth+hintsWidth+1 < availableWidth {
+				padding := strings.Repeat(" ", availableWidth-contentWidth-hintsWidth)
+				searchContent += padding + hintsStyle.Render(hints)
+			}
+		}
+		currentView += searchStyle.Render(searchContent)
 	}
 
 	explorerStyle := paneStyle
