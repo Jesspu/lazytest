@@ -11,6 +11,7 @@ LazyTest is a terminal user interface (TUI) for running tests in TypeScript and 
 *   **File Watching**: Automatically detects new test files and updates the tree.
 *   **Context Awareness**: Automatically finds the nearest `package.json` to run tests in the correct context (great for monorepos).
 *   **Status Indicators**: Visual feedback for running (⏳), passed (✅), and failed (❌) tests.
+*   **Search**: Quickly find files with `/` and navigate matches with `n`/`N`.
 *   **Customizable**: Configure custom test commands via `.lazytest.json`.
 
 ## Quick Start
@@ -54,6 +55,10 @@ mv lazytest /usr/local/bin/
 | `Tab` | Switch between File Explorer and Output panes |
 | `r` | Re-run the last executed test |
 | `R` | Refresh the file tree |
+| `/` | Enter Search Mode |
+| `n` | Next Search Match |
+| `N` | Previous Search Match |
+| `Esc` | Exit Search Mode |
 | `?` | Toggle Help Menu |
 | `q` / `Ctrl+C` | Quit |
 
