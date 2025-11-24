@@ -13,10 +13,18 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	var explorerView strings.Builder
 	explorerView.WriteString(titleStyle.Render("TEST EXPLORER") + "\n\n")
 
+	// Calculate available height for the tree
+	treeHeight := paneHeight
+	searchHeight := 0
+	if m.searchMode {
+		searchHeight = 3 // 1 line text + 2 lines border
+		treeHeight -= searchHeight
+	}
+
 	if m.fileTree == nil {
 		explorerView.WriteString("Scanning...")
 	} else {
-		start, end := m.calculateVisibleRange(paneHeight)
+		start, end := m.calculateVisibleRange(treeHeight)
 
 		for i := start; i < end; i++ {
 			if i >= len(m.flatNodes) {
@@ -27,20 +35,30 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 		}
 	}
 
+	// Fill remaining space to push search bar to bottom
+	currentView := explorerView.String()
+	currentHeight := lipgloss.Height(currentView)
+	if currentHeight < treeHeight {
+		currentView += strings.Repeat("\n", treeHeight-currentHeight)
+	}
+
+	if m.searchMode {
+		searchStyle := lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(highlight).
+			Width(paneWidth - 4) // Account for border width
+		currentView += searchStyle.Render(m.searchInput.View())
+	}
+
 	explorerStyle := paneStyle
 	if m.activePane == PaneExplorer {
 		explorerStyle = activePaneStyle
 	}
 
-	view := explorerView.String()
-	if m.searchMode {
-		view += "\n" + m.searchInput.View()
-	}
-
 	return explorerStyle.
 		Width(paneWidth).
 		Height(paneHeight).
-		Render(view)
+		Render(currentView)
 }
 
 func (m Model) calculateVisibleRange(paneHeight int) (int, int) {

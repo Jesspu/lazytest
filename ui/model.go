@@ -279,11 +279,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			m.viewport = viewport.New(paneWidth, viewportHeight)
-			m.viewport.SetContent(m.output)
+			m.viewport.SetContent(m.wrapOutput(paneWidth, m.output))
 			m.ready = true
 		} else {
 			m.viewport.Width = paneWidth
 			m.viewport.Height = viewportHeight
+			m.viewport.SetContent(m.wrapOutput(paneWidth, m.output))
 		}
 
 	case WatcherMsg:
@@ -296,7 +297,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case OutputMsg:
 		m.output += string(msg) + "\n"
-		m.viewport.SetContent(m.output)
+		m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
 		m.viewport.GotoBottom()
 		return m, m.waitForOutput
 
@@ -309,7 +310,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.nodeStatus[m.runningNodePath] = StatusFail
 				m.output += fmt.Sprintf("\nFAIL: %v\n", msg.Err)
 			}
-			m.viewport.SetContent(m.output)
+			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
 			m.viewport.GotoBottom()
 			m.runningNodePath = ""
 		}
@@ -317,6 +318,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+func (m Model) wrapOutput(width int, content string) string {
+	if width <= 0 {
+		return content
+	}
+	return lipgloss.NewStyle().Width(width).Render(content)
 }
 
 // View renders the UI based on the current state.
