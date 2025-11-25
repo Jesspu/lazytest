@@ -18,6 +18,11 @@ type KeyMap struct {
 	NextMatch  key.Binding
 	PrevMatch  key.Binding
 	ExitSearch key.Binding
+
+	// Tab Keys
+	NextTab     key.Binding
+	PrevTab     key.Binding
+	ToggleWatch key.Binding
 }
 
 // NewKeyMap returns a set of default keybindings.
@@ -71,18 +76,31 @@ func NewKeyMap() KeyMap {
 			key.WithKeys("esc"),
 			key.WithHelp("esc", "exit search"),
 		),
+		NextTab: key.NewBinding(
+			key.WithKeys("]"),
+			key.WithHelp("]", "next tab"),
+		),
+		PrevTab: key.NewBinding(
+			key.WithKeys("["),
+			key.WithHelp("[", "prev tab"),
+		),
+		ToggleWatch: key.NewBinding(
+			key.WithKeys("w"),
+			key.WithHelp("w", "watch/unwatch"),
+		),
 	}
 }
 
 // ShortHelp returns keybindings to be shown in the mini-help view. It's part of the help.KeyMap interface.
 func (k KeyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Help, k.Quit}
+	return []key.Binding{k.Enter, k.Search, k.NextTab, k.PrevTab, k.Help, k.Quit}
 }
 
 // FullHelp returns keybindings for the expanded help view. It's part of the help.KeyMap interface.
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Enter, k.Tab},
+		{k.PrevTab, k.NextTab, k.ToggleWatch},
 		{k.ReRunLast, k.Refresh, k.Help, k.Quit},
 	}
 }

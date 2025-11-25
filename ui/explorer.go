@@ -11,27 +11,104 @@ import (
 
 func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	var explorerView strings.Builder
-	explorerView.WriteString(titleStyle.Render("TEST EXPLORER") + "\n\n")
+
+	// Render Tabs
+	activeTabStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(highlight).
+		Padding(0, 1).
+		Foreground(highlight)
+
+	inactiveTabStyle := lipgloss.NewStyle().
+		Border(lipgloss.HiddenBorder()).
+		BorderForeground(subtle).
+		Padding(0, 1).
+		Foreground(subtle)
+
+	var explorerTab, watchedTab string
+	if m.activeTab == TabExplorer {
+		explorerTab = activeTabStyle.Render("Explorer")
+		watchedTab = inactiveTabStyle.Render("Watched")
+	} else {
+		explorerTab = inactiveTabStyle.Render("Explorer")
+		watchedTab = activeTabStyle.Render("Watched")
+	}
+
+	tabs := lipgloss.JoinHorizontal(lipgloss.Bottom, explorerTab, watchedTab)
+	explorerView.WriteString(tabs + "\n\n")
 
 	// Calculate available height for the tree
 	treeHeight := paneHeight
 	searchHeight := 0
-	if m.searchMode {
+	if m.searchMode && m.activeTab == TabExplorer {
 		searchHeight = 3 // 1 line text + 2 lines border
 		treeHeight -= searchHeight
 	}
 
-	if m.fileTree == nil {
-		explorerView.WriteString("Scanning...")
-	} else {
-		start, end := m.calculateVisibleRange(treeHeight)
+	if m.activeTab == TabExplorer {
+		if m.fileTree == nil {
+			explorerView.WriteString("Scanning...")
+		} else {
+			start, end := m.calculateVisibleRange(treeHeight)
 
-		for i := start; i < end; i++ {
-			if i >= len(m.flatNodes) {
-				break
+			for i := start; i < end; i++ {
+				if i >= len(m.flatNodes) {
+					break
+				}
+				node := m.flatNodes[i]
+				m.renderNode(&explorerView, node, i)
 			}
-			node := m.flatNodes[i]
-			m.renderNode(&explorerView, node, i)
+		}
+	} else {
+		// Render Watched Files
+		if len(m.watchedFiles) == 0 {
+			explorerView.WriteString("No watched files.\nPress 'w' on a file to watch it.")
+		} else {
+			start := 0
+			end := len(m.watchedFiles)
+			if len(m.watchedFiles) > treeHeight {
+				if m.watchedCursor < treeHeight/2 {
+					start = 0
+					end = treeHeight
+				} else if m.watchedCursor > len(m.watchedFiles)-treeHeight/2 {
+					start = len(m.watchedFiles) - treeHeight
+					end = len(m.watchedFiles)
+				} else {
+					start = m.watchedCursor - treeHeight/2
+					end = m.watchedCursor + treeHeight/2
+				}
+			}
+
+			for i := start; i < end; i++ {
+				path := m.watchedFiles[i]
+				name := path[strings.LastIndex(path, string(os.PathSeparator))+1:]
+
+				cursor := " "
+				if m.watchedCursor == i {
+					cursor = ">"
+				}
+
+				// Get status for this file
+				status, ok := m.nodeStatus[path]
+				icon := "📄"
+				if ok {
+					switch status {
+					case StatusRunning:
+						icon = "⏳"
+					case StatusPass:
+						icon = "✅"
+					case StatusFail:
+						icon = "❌"
+					}
+				}
+
+				line := fmt.Sprintf("%s %s %s", cursor, icon, name)
+				if m.watchedCursor == i {
+					explorerView.WriteString(lipgloss.NewStyle().Foreground(highlight).Render(line) + "\n")
+				} else {
+					explorerView.WriteString(line + "\n")
+				}
+			}
 		}
 	}
 
@@ -42,7 +119,7 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 		currentView += strings.Repeat("\n", treeHeight-currentHeight)
 	}
 
-	if m.searchMode {
+	if m.searchMode && m.activeTab == TabExplorer {
 		searchStyle := lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(highlight).

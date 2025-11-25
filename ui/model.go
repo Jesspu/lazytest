@@ -25,6 +25,16 @@ const (
 	PaneOutput
 )
 
+// LeftTab represents the active tab in the left pane.
+type LeftTab int
+
+const (
+	// TabExplorer is the file explorer tab.
+	TabExplorer LeftTab = iota
+	// TabWatched is the watched files tab.
+	TabWatched
+)
+
 // TestStatus represents the current state of a test file.
 type TestStatus int
 
@@ -49,6 +59,11 @@ type Model struct {
 	showHelp   bool
 	cursor     int
 	viewport   viewport.Model
+
+	// Tab State
+	activeTab     LeftTab
+	watchedFiles  []string
+	watchedCursor int
 
 	// Search State
 	searchMode        bool
@@ -93,7 +108,12 @@ type TreeLoadedMsg *filesystem.Node
 func NewModel() Model {
 	cwd, _ := os.Getwd()
 	h := help.New()
-	h.ShowAll = true
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#909090", Dark: "#A0A0A0"})
+	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B0B0B0", Dark: "#808080"})
+	h.Styles.ShortSeparator = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#606060"})
+	h.Styles.FullKey = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#909090", Dark: "#A0A0A0"})
+	h.Styles.FullDesc = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B0B0B0", Dark: "#808080"})
+	h.Styles.FullSeparator = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#D0D0D0", Dark: "#606060"})
 	ti := textinput.New()
 	ti.Placeholder = "Search..."
 	ti.Prompt = "/"
@@ -153,11 +173,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.lastRunNode != nil {
 					return m, m.triggerTest(m.lastRunNode)
 				}
+			case key.Matches(msg, m.keys.ReRunLast):
+				if m.lastRunNode != nil {
+					return m, m.triggerTest(m.lastRunNode)
+				}
+			case key.Matches(msg, m.keys.NextTab):
+				if m.activePane == PaneExplorer {
+					if m.activeTab == TabExplorer {
+						m.activeTab = TabWatched
+					} else {
+						m.activeTab = TabExplorer
+					}
+				}
+			case key.Matches(msg, m.keys.PrevTab):
+				if m.activePane == PaneExplorer {
+					if m.activeTab == TabExplorer {
+						m.activeTab = TabWatched
+					} else {
+						m.activeTab = TabExplorer
+					}
+				}
 			}
 		}
 
 		// Handle pane-specific keys
 		if m.activePane == PaneExplorer {
+			if m.activeTab == TabWatched {
+				switch {
+				case key.Matches(msg, m.keys.Up):
+					if m.watchedCursor > 0 {
+						m.watchedCursor--
+					}
+				case key.Matches(msg, m.keys.Down):
+					if m.watchedCursor < len(m.watchedFiles)-1 {
+						m.watchedCursor++
+					}
+				case key.Matches(msg, m.keys.Enter):
+					if m.watchedCursor < len(m.watchedFiles) {
+						path := m.watchedFiles[m.watchedCursor]
+						// Create a dummy node for triggering the test
+						node := &filesystem.Node{
+							Path: path,
+							Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
+						}
+						return m, m.triggerTest(node)
+					}
+				case key.Matches(msg, m.keys.ToggleWatch):
+					if m.watchedCursor < len(m.watchedFiles) {
+						// Remove from watched
+						m.watchedFiles = append(m.watchedFiles[:m.watchedCursor], m.watchedFiles[m.watchedCursor+1:]...)
+						if m.watchedCursor >= len(m.watchedFiles) && m.watchedCursor > 0 {
+							m.watchedCursor--
+						}
+					}
+				}
+				return m, nil
+			}
+
 			if m.searchMode {
 				if m.searchFocus {
 					// Typing Mode
@@ -251,6 +323,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						node := m.flatNodes[m.cursor]
 						if !node.IsDir {
 							return m, m.triggerTest(node)
+						}
+					}
+				case key.Matches(msg, m.keys.ToggleWatch):
+					if m.cursor < len(m.flatNodes) {
+						node := m.flatNodes[m.cursor]
+						if !node.IsDir {
+							// Toggle watch status
+							found := false
+							for i, path := range m.watchedFiles {
+								if path == node.Path {
+									// Remove
+									m.watchedFiles = append(m.watchedFiles[:i], m.watchedFiles[i+1:]...)
+									found = true
+									break
+								}
+							}
+							if !found {
+								// Add
+								m.watchedFiles = append(m.watchedFiles, node.Path)
+							}
 						}
 					}
 				}
