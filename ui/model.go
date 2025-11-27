@@ -49,6 +49,13 @@ const (
 	StatusFail
 )
 
+// DisplayNode represents a node in the explorer list, potentially compacted.
+type DisplayNode struct {
+	*filesystem.Node
+	DisplayName string
+	Depth       int
+}
+
 // Model represents the application state for the Bubbletea program.
 type Model struct {
 	// UI State
@@ -79,7 +86,7 @@ type Model struct {
 	// Data / Dependencies
 	rootPath   string
 	fileTree   *filesystem.Node
-	flatNodes  []*filesystem.Node
+	flatNodes  []DisplayNode
 	watcher    *filesystem.Watcher
 	testRunner *runner.Runner
 
@@ -311,7 +318,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.searchMatches = []int{}
 						if m.searchInput.Value() != "" {
 							for i, node := range m.flatNodes {
-								if strings.Contains(strings.ToLower(node.Name), strings.ToLower(m.searchInput.Value())) {
+								if strings.Contains(strings.ToLower(node.DisplayName), strings.ToLower(m.searchInput.Value())) {
 									m.searchMatches = append(m.searchMatches, i)
 								}
 							}
@@ -349,7 +356,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if m.cursor < len(m.flatNodes) {
 							node := m.flatNodes[m.cursor]
 							if !node.IsDir {
-								return m, m.triggerTest(node)
+								return m, m.triggerTest(node.Node)
 							}
 						}
 					}
@@ -362,18 +369,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.searchInput.Focus()
 					return m, textinput.Blink
 				case key.Matches(msg, m.keys.Up):
-					if m.cursor > 0 {
-						m.cursor--
+					// Smart Navigation Up
+					newCursor := m.cursor - 1
+					for newCursor >= 0 {
+						if !m.flatNodes[newCursor].IsDir {
+							m.cursor = newCursor
+							break
+						}
+						newCursor--
 					}
 				case key.Matches(msg, m.keys.Down):
-					if m.cursor < len(m.flatNodes)-1 {
-						m.cursor++
+					// Smart Navigation Down
+					newCursor := m.cursor + 1
+					for newCursor < len(m.flatNodes) {
+						if !m.flatNodes[newCursor].IsDir {
+							m.cursor = newCursor
+							break
+						}
+						newCursor++
 					}
 				case key.Matches(msg, m.keys.Enter):
 					if m.cursor < len(m.flatNodes) {
 						node := m.flatNodes[m.cursor]
 						if !node.IsDir {
-							return m, m.triggerTest(node)
+							return m, m.triggerTest(node.Node)
 						}
 					}
 				case key.Matches(msg, m.keys.ToggleWatch):

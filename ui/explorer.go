@@ -173,16 +173,16 @@ func (m Model) calculateVisibleRange(paneHeight int) (int, int) {
 	return start, end
 }
 
-func (m Model) renderNode(b *strings.Builder, node *filesystem.Node, index int) {
+func (m Model) renderNode(b *strings.Builder, node DisplayNode, index int) {
 	cursor := " "
 	if m.cursor == index {
 		cursor = ">"
 	}
 
-	depth := strings.Count(node.Path, string(os.PathSeparator)) - strings.Count(m.rootPath, string(os.PathSeparator))
-	indent := strings.Repeat("  ", depth)
+	// Use the pre-calculated depth from DisplayNode
+	indent := strings.Repeat("  ", node.Depth)
 
-	icon := m.getNodeIcon(node)
+	icon := m.getNodeIcon(node.Node)
 
 	// Check if watched
 	watchIcon := "  "
@@ -193,7 +193,7 @@ func (m Model) renderNode(b *strings.Builder, node *filesystem.Node, index int) 
 		}
 	}
 
-	name := node.Name
+	name := node.DisplayName
 	// Highlight search matches
 	if m.searchMode && m.searchInput.Value() != "" {
 		lowerName := strings.ToLower(name)
