@@ -88,6 +88,8 @@ type Model struct {
 	runningNodePath string
 	lastRunNode     *filesystem.Node
 	nodeStatus      map[string]TestStatus
+	testQueue       []string
+	testOutputs     map[string]string
 }
 
 // Messages
@@ -103,6 +105,11 @@ type TestResultMsg struct{ Err error }
 
 // TreeLoadedMsg carries the new file tree after a refresh.
 type TreeLoadedMsg *filesystem.Node
+
+// WatcherReadyMsg carries the initialized watcher.
+type WatcherReadyMsg struct {
+	watcher *filesystem.Watcher
+}
 
 // NewModel creates and initializes a new Model.
 func NewModel() Model {
@@ -125,6 +132,7 @@ func NewModel() Model {
 		rootPath:    cwd,
 		testRunner:  runner.NewRunner(),
 		nodeStatus:  make(map[string]TestStatus),
+		testOutputs: make(map[string]string),
 		keys:        NewKeyMap(),
 		help:        h,
 		searchInput: ti,
@@ -181,16 +189,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
 						m.activeTab = TabWatched
+						if m.watchedCursor < len(m.watchedFiles) {
+							path := m.watchedFiles[m.watchedCursor]
+							if out, ok := m.testOutputs[path]; ok {
+								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
+							} else {
+								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
+							}
+							m.viewport.GotoBottom()
+						}
 					} else {
 						m.activeTab = TabExplorer
+						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
+						m.viewport.GotoBottom()
 					}
 				}
 			case key.Matches(msg, m.keys.PrevTab):
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
 						m.activeTab = TabWatched
+						if m.watchedCursor < len(m.watchedFiles) {
+							path := m.watchedFiles[m.watchedCursor]
+							if out, ok := m.testOutputs[path]; ok {
+								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
+							} else {
+								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
+							}
+							m.viewport.GotoBottom()
+						}
 					} else {
 						m.activeTab = TabExplorer
+						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
+						m.viewport.GotoBottom()
 					}
 				}
 			}
@@ -203,10 +233,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case key.Matches(msg, m.keys.Up):
 					if m.watchedCursor > 0 {
 						m.watchedCursor--
+						path := m.watchedFiles[m.watchedCursor]
+						if out, ok := m.testOutputs[path]; ok {
+							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
+						} else {
+							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
+						}
+						m.viewport.GotoBottom()
 					}
 				case key.Matches(msg, m.keys.Down):
 					if m.watchedCursor < len(m.watchedFiles)-1 {
 						m.watchedCursor++
+						path := m.watchedFiles[m.watchedCursor]
+						if out, ok := m.testOutputs[path]; ok {
+							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
+						} else {
+							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
+						}
+						m.viewport.GotoBottom()
 					}
 				case key.Matches(msg, m.keys.Enter):
 					if m.watchedCursor < len(m.watchedFiles) {
@@ -379,8 +423,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.SetContent(m.wrapOutput(paneWidth, m.output))
 		}
 
+	case WatcherReadyMsg:
+		m.watcher = msg.watcher
+		return m, m.waitForWatcherEvents
+
 	case WatcherMsg:
-		return m, m.refreshTree
+		// Queue watched files
+		for _, path := range m.watchedFiles {
+			// Check if already in queue
+			found := false
+			for _, q := range m.testQueue {
+				if q == path {
+					found = true
+					break
+				}
+			}
+			if !found {
+				m.testQueue = append(m.testQueue, path)
+			}
+		}
+
+		var cmd tea.Cmd
+		// Trigger if idle
+		if m.runningNodePath == "" && len(m.testQueue) > 0 {
+			nextPath := m.testQueue[0]
+			m.testQueue = m.testQueue[1:]
+			node := &filesystem.Node{
+				Path: nextPath,
+				Name: nextPath[strings.LastIndex(nextPath, string(os.PathSeparator))+1:],
+			}
+			cmd = m.triggerTest(node)
+		}
+
+		return m, tea.Batch(m.refreshTree, cmd, m.waitForWatcherEvents)
 
 	case TreeLoadedMsg:
 		m.fileTree = msg
@@ -389,8 +464,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case OutputMsg:
 		m.output += string(msg) + "\n"
-		m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
-		m.viewport.GotoBottom()
+		if m.runningNodePath != "" {
+			m.testOutputs[m.runningNodePath] = m.output
+		}
+
+		shouldShow := true
+		if m.activeTab == TabWatched {
+			if m.watchedCursor < len(m.watchedFiles) && m.watchedFiles[m.watchedCursor] != m.runningNodePath {
+				shouldShow = false
+			}
+		}
+
+		if shouldShow {
+			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
+			m.viewport.GotoBottom()
+		}
 		return m, m.waitForOutput
 
 	case TestResultMsg:
@@ -402,10 +490,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.nodeStatus[m.runningNodePath] = StatusFail
 				m.output += fmt.Sprintf("\nFAIL: %v\n", msg.Err)
 			}
+			m.testOutputs[m.runningNodePath] = m.output
 			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
 			m.viewport.GotoBottom()
 			m.runningNodePath = ""
 		}
+
+		// Process queue
+		if len(m.testQueue) > 0 {
+			nextPath := m.testQueue[0]
+			m.testQueue = m.testQueue[1:]
+			node := &filesystem.Node{
+				Path: nextPath,
+				Name: nextPath[strings.LastIndex(nextPath, string(os.PathSeparator))+1:],
+			}
+			return m, tea.Batch(m.waitForTestResult, m.triggerTest(node))
+		}
+
 		return m, m.waitForTestResult
 	}
 
@@ -475,9 +576,8 @@ func (m *Model) startWatcher() tea.Msg {
 	if err != nil {
 		return nil
 	}
-	m.watcher = w
-
-	return m.waitForWatcherEvents()
+	// Return the watcher in a message so the main model can update its state
+	return WatcherReadyMsg{watcher: w}
 }
 
 func (m Model) waitForWatcherEvents() tea.Msg {
@@ -510,8 +610,19 @@ func (m Model) waitForTestResult() tea.Msg {
 func (m *Model) triggerTest(node *filesystem.Node) tea.Cmd {
 	m.lastRunNode = node
 	m.output = fmt.Sprintf("Running %s...\n", node.Name)
-	m.viewport.SetContent(m.output)
-	m.viewport.GotoBottom()
+	m.testOutputs[node.Path] = m.output
+
+	shouldShow := true
+	if m.activeTab == TabWatched {
+		if m.watchedCursor < len(m.watchedFiles) && m.watchedFiles[m.watchedCursor] != node.Path {
+			shouldShow = false
+		}
+	}
+
+	if shouldShow {
+		m.viewport.SetContent(m.output)
+		m.viewport.GotoBottom()
+	}
 
 	m.runningNodePath = node.Path
 	m.nodeStatus[node.Path] = StatusRunning

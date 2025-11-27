@@ -25,7 +25,7 @@ func NewWatcher(root string) (*Watcher, error) {
 
 	w := &Watcher{
 		fsWatcher: fsWatcher,
-		Events:    make(chan struct{}),
+		Events:    make(chan struct{}, 10), // Buffered to prevent blocking
 		done:      make(chan struct{}),
 	}
 
@@ -69,6 +69,11 @@ func (w *Watcher) startLoop() {
 		case <-w.done:
 			return
 		case event, ok := <-w.fsWatcher.Events:
+			// Ignore ignored files
+			if shouldIgnore(filepath.Base(event.Name)) {
+				continue
+			}
+
 			if !ok {
 				return
 			}

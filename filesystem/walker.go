@@ -64,7 +64,7 @@ func shouldIgnore(name string) bool {
 			return true
 		}
 	}
-	return false
+	return strings.HasSuffix(name, ".log")
 }
 
 // isTestFile checks if a file is a test file based on its extension.
