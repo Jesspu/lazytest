@@ -184,6 +184,15 @@ func (m Model) renderNode(b *strings.Builder, node *filesystem.Node, index int) 
 
 	icon := m.getNodeIcon(node)
 
+	// Check if watched
+	watchIcon := "  "
+	for _, watched := range m.watchedFiles {
+		if watched == node.Path {
+			watchIcon = "👁 "
+			break
+		}
+	}
+
 	name := node.Name
 	// Highlight search matches
 	if m.searchMode && m.searchInput.Value() != "" {
@@ -208,7 +217,7 @@ func (m Model) renderNode(b *strings.Builder, node *filesystem.Node, index int) 
 		}
 	}
 
-	line := fmt.Sprintf("%s %s%s %s", cursor, indent, icon, name)
+	line := fmt.Sprintf("%s %s%s%s %s", cursor, indent, watchIcon, icon, name)
 
 	if m.cursor == index {
 		b.WriteString(lipgloss.NewStyle().Foreground(highlight).Render(line) + "\n")
