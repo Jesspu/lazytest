@@ -168,6 +168,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case key.Matches(msg, m.keys.Help):
 				m.showHelp = !m.showHelp
+				m.help.ShowAll = m.showHelp
 				return m, nil
 			case key.Matches(msg, m.keys.Tab):
 				if m.activePane == PaneExplorer {
@@ -222,6 +223,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
 						m.viewport.GotoBottom()
 					}
+				}
+			case key.Matches(msg, m.keys.ClearWatched):
+				m.watchedFiles = []string{}
+				m.watchedCursor = 0
+				if m.activeTab == TabWatched {
+					m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No watched files.\nPress 'w' on a file to watch it."))
 				}
 			}
 		}
