@@ -16,15 +16,24 @@ type Runner struct {
 	mu      sync.Mutex
 	currCmd *exec.Cmd
 	cancel  context.CancelFunc
-	Output  chan string // Channel to stream output lines
-	Status  chan error  // Channel to report completion/error
+	Updates chan Update // Single channel for ordered updates
+}
+
+// Update is a marker interface for runner updates.
+type Update interface{}
+
+// OutputUpdate carries a line of output.
+type OutputUpdate string
+
+// StatusUpdate carries the final result.
+type StatusUpdate struct {
+	Err error
 }
 
 // NewRunner creates a new Runner instance.
 func NewRunner() *Runner {
 	return &Runner{
-		Output: make(chan string, 100), // Buffered to prevent blocking
-		Status: make(chan error, 1),
+		Updates: make(chan Update, 1024), // Buffered to prevent blocking
 	}
 }
 
@@ -34,9 +43,6 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 	// Kill previous process if it exists
 	if r.cancel != nil {
 		r.cancel()
-		// We could wait for it to exit, but for now let's rely on the context cancellation
-		// and the fact that we are starting a new one.
-		// Ideally we should wait for the previous Wait() to return to ensure cleanup.
 	}
 
 	// Create new context
@@ -48,6 +54,11 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 	// Set process group to ensure we can kill children if needed (though Context handles the main one)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
+	// Ensure we kill the whole process group when the context is cancelled
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+
 	// Force color output
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "FORCE_COLOR=1", "CLICOLOR_FORCE=1")
@@ -58,21 +69,21 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 	// Setup pipes
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		r.Output <- fmt.Sprintf("Error creating stdout pipe: %v", err)
-		r.Status <- err
+		r.Updates <- OutputUpdate(fmt.Sprintf("Error creating stdout pipe: %v", err))
+		r.Updates <- StatusUpdate{Err: err}
 		return
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		r.Output <- fmt.Sprintf("Error creating stderr pipe: %v", err)
-		r.Status <- err
+		r.Updates <- OutputUpdate(fmt.Sprintf("Error creating stderr pipe: %v", err))
+		r.Updates <- StatusUpdate{Err: err}
 		return
 	}
 
 	// Start command
 	if err := cmd.Start(); err != nil {
-		r.Output <- fmt.Sprintf("Error starting command: %v", err)
-		r.Status <- err
+		r.Updates <- OutputUpdate(fmt.Sprintf("Error starting command: %v", err))
+		r.Updates <- StatusUpdate{Err: err}
 		return
 	}
 
@@ -81,11 +92,11 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		streamReader(stdout, r.Output)
+		streamReader(stdout, r.Updates)
 	}()
 	go func() {
 		defer wg.Done()
-		streamReader(stderr, r.Output)
+		streamReader(stderr, r.Updates)
 	}()
 
 	// Wait for command to finish
@@ -106,15 +117,15 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 		r.mu.Unlock()
 
 		if shouldReport {
-			r.Status <- err
+			r.Updates <- StatusUpdate{Err: err}
 		}
 	}()
 }
 
-func streamReader(r io.Reader, out chan<- string) {
+func streamReader(r io.Reader, out chan<- Update) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		out <- scanner.Text()
+		out <- OutputUpdate(scanner.Text())
 	}
 }
 

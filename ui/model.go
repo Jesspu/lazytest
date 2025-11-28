@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/jesspatton/lazytest/engine"
 	"github.com/jesspatton/lazytest/filesystem"
 	"github.com/jesspatton/lazytest/runner"
 )
@@ -33,20 +33,6 @@ const (
 	TabExplorer LeftTab = iota
 	// TabWatched is the watched files tab.
 	TabWatched
-)
-
-// TestStatus represents the current state of a test file.
-type TestStatus int
-
-const (
-	// StatusIdle indicates the test is not running.
-	StatusIdle TestStatus = iota
-	// StatusRunning indicates the test is currently executing.
-	StatusRunning
-	// StatusPass indicates the last run passed.
-	StatusPass
-	// StatusFail indicates the last run failed.
-	StatusFail
 )
 
 // DisplayNode represents a node in the explorer list, potentially compacted.
@@ -84,43 +70,12 @@ type Model struct {
 	help help.Model
 
 	// Data / Dependencies
-	rootPath   string
-	fileTree   *filesystem.Node
-	flatNodes  []DisplayNode
-	watcher    *filesystem.Watcher
-	testRunner *runner.Runner
-
-	// Application State
-	output          string
-	runningNodePath string
-	lastRunNode     *filesystem.Node
-	nodeStatus      map[string]TestStatus
-	testQueue       []string
-	testOutputs     map[string]string
-}
-
-// Messages
-
-// WatcherMsg indicates a file system event occurred.
-type WatcherMsg struct{}
-
-// OutputMsg carries a line of output from the test runner.
-type OutputMsg string
-
-// TestResultMsg carries the final result (error or nil) of a test run.
-type TestResultMsg struct{ Err error }
-
-// TreeLoadedMsg carries the new file tree after a refresh.
-type TreeLoadedMsg *filesystem.Node
-
-// WatcherReadyMsg carries the initialized watcher.
-type WatcherReadyMsg struct {
-	watcher *filesystem.Watcher
+	engine    *engine.Engine
+	flatNodes []DisplayNode
 }
 
 // NewModel creates and initializes a new Model.
-func NewModel() Model {
-	cwd, _ := os.Getwd()
+func NewModel(eng *engine.Engine) Model {
 	h := help.New()
 	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#909090", Dark: "#A0A0A0"})
 	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#B0B0B0", Dark: "#808080"})
@@ -136,10 +91,7 @@ func NewModel() Model {
 
 	return Model{
 		activePane:  PaneExplorer,
-		rootPath:    cwd,
-		testRunner:  runner.NewRunner(),
-		nodeStatus:  make(map[string]TestStatus),
-		testOutputs: make(map[string]string),
+		engine:      eng,
 		keys:        NewKeyMap(),
 		help:        h,
 		searchInput: ti,
@@ -148,12 +100,7 @@ func NewModel() Model {
 
 // Init initializes the Bubbletea program.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
-		m.refreshTree,
-		m.startWatcher,
-		m.waitForOutput,
-		m.waitForTestResult,
-	)
+	return m.engine.Init()
 }
 
 // Update handles incoming messages and updates the model state.
@@ -163,15 +110,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds []tea.Cmd
 	)
 
+	// Let engine handle business logic
+	cmd = m.engine.Update(msg)
+	cmds = append(cmds, cmd)
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		// Handle global keys (except when in search mode, some keys might be overridden)
 		if !m.searchMode {
 			switch {
 			case key.Matches(msg, m.keys.Quit):
-				if m.watcher != nil {
-					m.watcher.Close()
-				}
 				return m, tea.Quit
 			case key.Matches(msg, m.keys.Help):
 				m.showHelp = !m.showHelp
@@ -184,22 +132,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.activePane = PaneExplorer
 				}
 			case key.Matches(msg, m.keys.Refresh):
-				return m, m.refreshTree
+				return m, m.engine.RefreshTree
 			case key.Matches(msg, m.keys.ReRunLast):
-				if m.lastRunNode != nil {
-					return m, m.triggerTest(m.lastRunNode)
-				}
-			case key.Matches(msg, m.keys.ReRunLast):
-				if m.lastRunNode != nil {
-					return m, m.triggerTest(m.lastRunNode)
+				// TODO: Implement ReRunLast in Engine
+				if m.engine.State.RunningNode != nil {
+					// This logic is slightly different now, we might need a LastRunNode in State
 				}
 			case key.Matches(msg, m.keys.NextTab):
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
 						m.activeTab = TabWatched
-						if m.watchedCursor < len(m.watchedFiles) {
-							path := m.watchedFiles[m.watchedCursor]
-							if out, ok := m.testOutputs[path]; ok {
+						if m.watchedCursor < len(m.engine.State.Watched) {
+							path := m.engine.State.Watched[m.watchedCursor]
+							if out, ok := m.engine.State.TestOutputs[path]; ok {
 								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 							} else {
 								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
@@ -208,7 +153,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					} else {
 						m.activeTab = TabExplorer
-						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
+						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.State.CurrentOutput))
 						m.viewport.GotoBottom()
 					}
 				}
@@ -216,9 +161,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
 						m.activeTab = TabWatched
-						if m.watchedCursor < len(m.watchedFiles) {
-							path := m.watchedFiles[m.watchedCursor]
-							if out, ok := m.testOutputs[path]; ok {
+						if m.watchedCursor < len(m.engine.State.Watched) {
+							path := m.engine.State.Watched[m.watchedCursor]
+							if out, ok := m.engine.State.TestOutputs[path]; ok {
 								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 							} else {
 								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
@@ -227,12 +172,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					} else {
 						m.activeTab = TabExplorer
-						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
+						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.State.CurrentOutput))
 						m.viewport.GotoBottom()
 					}
 				}
 			case key.Matches(msg, m.keys.ClearWatched):
-				m.watchedFiles = []string{}
+				m.engine.State.Watched = []string{}
 				m.watchedCursor = 0
 				if m.activeTab == TabWatched {
 					m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No watched files.\nPress 'w' on a file to watch it."))
@@ -247,8 +192,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case key.Matches(msg, m.keys.Up):
 					if m.watchedCursor > 0 {
 						m.watchedCursor--
-						path := m.watchedFiles[m.watchedCursor]
-						if out, ok := m.testOutputs[path]; ok {
+						path := m.engine.State.Watched[m.watchedCursor]
+						if out, ok := m.engine.State.TestOutputs[path]; ok {
 							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 						} else {
 							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
@@ -256,10 +201,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.viewport.GotoBottom()
 					}
 				case key.Matches(msg, m.keys.Down):
-					if m.watchedCursor < len(m.watchedFiles)-1 {
+					if m.watchedCursor < len(m.engine.State.Watched)-1 {
 						m.watchedCursor++
-						path := m.watchedFiles[m.watchedCursor]
-						if out, ok := m.testOutputs[path]; ok {
+						path := m.engine.State.Watched[m.watchedCursor]
+						if out, ok := m.engine.State.TestOutputs[path]; ok {
 							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 						} else {
 							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
@@ -267,20 +212,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.viewport.GotoBottom()
 					}
 				case key.Matches(msg, m.keys.Enter):
-					if m.watchedCursor < len(m.watchedFiles) {
-						path := m.watchedFiles[m.watchedCursor]
+					if m.watchedCursor < len(m.engine.State.Watched) {
+						path := m.engine.State.Watched[m.watchedCursor]
 						// Create a dummy node for triggering the test
 						node := &filesystem.Node{
 							Path: path,
 							Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
 						}
-						return m, m.triggerTest(node)
+						return m, m.engine.TriggerTest(node)
 					}
 				case key.Matches(msg, m.keys.ToggleWatch):
-					if m.watchedCursor < len(m.watchedFiles) {
-						// Remove from watched
-						m.watchedFiles = append(m.watchedFiles[:m.watchedCursor], m.watchedFiles[m.watchedCursor+1:]...)
-						if m.watchedCursor >= len(m.watchedFiles) && m.watchedCursor > 0 {
+					if m.watchedCursor < len(m.engine.State.Watched) {
+						path := m.engine.State.Watched[m.watchedCursor]
+						m.engine.ToggleWatch(path)
+						if m.watchedCursor >= len(m.engine.State.Watched) && m.watchedCursor > 0 {
 							m.watchedCursor--
 						}
 					}
@@ -356,7 +301,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if m.cursor < len(m.flatNodes) {
 							node := m.flatNodes[m.cursor]
 							if !node.IsDir {
-								return m, m.triggerTest(node.Node)
+								return m, m.engine.TriggerTest(node.Node)
 							}
 						}
 					}
@@ -392,27 +337,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.cursor < len(m.flatNodes) {
 						node := m.flatNodes[m.cursor]
 						if !node.IsDir {
-							return m, m.triggerTest(node.Node)
+							return m, m.engine.TriggerTest(node.Node)
 						}
 					}
 				case key.Matches(msg, m.keys.ToggleWatch):
 					if m.cursor < len(m.flatNodes) {
 						node := m.flatNodes[m.cursor]
 						if !node.IsDir {
-							// Toggle watch status
-							found := false
-							for i, path := range m.watchedFiles {
-								if path == node.Path {
-									// Remove
-									m.watchedFiles = append(m.watchedFiles[:i], m.watchedFiles[i+1:]...)
-									found = true
-									break
-								}
-							}
-							if !found {
-								// Add
-								m.watchedFiles = append(m.watchedFiles, node.Path)
-							}
+							m.engine.ToggleWatch(node.Path)
 						}
 					}
 				}
@@ -441,99 +373,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			m.viewport = viewport.New(paneWidth, viewportHeight)
-			m.viewport.SetContent(m.wrapOutput(paneWidth, m.output))
+			m.viewport.SetContent(m.wrapOutput(paneWidth, m.engine.State.CurrentOutput))
 			m.ready = true
 		} else {
 			m.viewport.Width = paneWidth
 			m.viewport.Height = viewportHeight
-			m.viewport.SetContent(m.wrapOutput(paneWidth, m.output))
+			m.viewport.SetContent(m.wrapOutput(paneWidth, m.engine.State.CurrentOutput))
 		}
 
-	case WatcherReadyMsg:
-		m.watcher = msg.watcher
-		return m, m.waitForWatcherEvents
-
-	case WatcherMsg:
-		// Queue watched files
-		for _, path := range m.watchedFiles {
-			// Check if already in queue
-			found := false
-			for _, q := range m.testQueue {
-				if q == path {
-					found = true
-					break
-				}
-			}
-			if !found {
-				m.testQueue = append(m.testQueue, path)
-			}
-		}
-
-		var cmd tea.Cmd
-		// Trigger if idle
-		if m.runningNodePath == "" && len(m.testQueue) > 0 {
-			nextPath := m.testQueue[0]
-			m.testQueue = m.testQueue[1:]
-			node := &filesystem.Node{
-				Path: nextPath,
-				Name: nextPath[strings.LastIndex(nextPath, string(os.PathSeparator))+1:],
-			}
-			cmd = m.triggerTest(node)
-		}
-
-		return m, tea.Batch(m.refreshTree, cmd, m.waitForWatcherEvents)
-
-	case TreeLoadedMsg:
-		m.fileTree = msg
-		m.flatNodes = flattenNodes(m.fileTree)
+	case engine.TreeLoadedMsg:
+		m.flatNodes = flattenNodes(m.engine.State.Tree)
 		return m, nil
 
-	case OutputMsg:
-		m.output += string(msg) + "\n"
-		if m.runningNodePath != "" {
-			m.testOutputs[m.runningNodePath] = m.output
-		}
-
+	case runner.OutputUpdate:
 		shouldShow := true
 		if m.activeTab == TabWatched {
-			if m.watchedCursor < len(m.watchedFiles) && m.watchedFiles[m.watchedCursor] != m.runningNodePath {
+			if m.watchedCursor < len(m.engine.State.Watched) && m.engine.State.Watched[m.watchedCursor] != m.engine.State.RunningNode.Path {
 				shouldShow = false
 			}
 		}
 
 		if shouldShow {
-			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
+			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.State.CurrentOutput))
 			m.viewport.GotoBottom()
 		}
-		return m, m.waitForOutput
+		return m, tea.Batch(cmds...)
 
-	case TestResultMsg:
-		if m.runningNodePath != "" {
-			if msg.Err == nil {
-				m.nodeStatus[m.runningNodePath] = StatusPass
-				m.output += "\nPASS\n"
-			} else {
-				m.nodeStatus[m.runningNodePath] = StatusFail
-				m.output += fmt.Sprintf("\nFAIL: %v\n", msg.Err)
-			}
-			m.testOutputs[m.runningNodePath] = m.output
-			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.output))
-			m.viewport.GotoBottom()
-			m.runningNodePath = ""
-		}
-
-		// Process queue
-		if len(m.testQueue) > 0 {
-			nextPath := m.testQueue[0]
-			m.testQueue = m.testQueue[1:]
-			node := &filesystem.Node{
-				Path: nextPath,
-				Name: nextPath[strings.LastIndex(nextPath, string(os.PathSeparator))+1:],
-			}
-			return m, tea.Batch(m.waitForTestResult, m.triggerTest(node))
-		}
-
-		return m, m.waitForTestResult
+	case runner.StatusUpdate:
+		m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.State.CurrentOutput))
+		m.viewport.GotoBottom()
+		return m, tea.Batch(cmds...)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -585,84 +454,4 @@ func (m Model) View() string {
 	footer := m.renderFooter()
 
 	return lipgloss.JoinVertical(lipgloss.Left, panes, footer)
-}
-
-// Commands
-
-func (m *Model) refreshTree() tea.Msg {
-	tree, err := filesystem.Walk(m.rootPath)
-	if err != nil {
-		return nil
-	}
-	return TreeLoadedMsg(tree)
-}
-
-func (m *Model) startWatcher() tea.Msg {
-	w, err := filesystem.NewWatcher(m.rootPath)
-	if err != nil {
-		return nil
-	}
-	// Return the watcher in a message so the main model can update its state
-	return WatcherReadyMsg{watcher: w}
-}
-
-func (m Model) waitForWatcherEvents() tea.Msg {
-	if m.watcher == nil {
-		return nil
-	}
-	_, ok := <-m.watcher.Events
-	if !ok {
-		return nil
-	}
-	return WatcherMsg{}
-}
-
-func (m Model) waitForOutput() tea.Msg {
-	line, ok := <-m.testRunner.Output
-	if !ok {
-		return nil
-	}
-	return OutputMsg(line)
-}
-
-func (m Model) waitForTestResult() tea.Msg {
-	err, ok := <-m.testRunner.Status
-	if !ok {
-		return nil
-	}
-	return TestResultMsg{Err: err}
-}
-
-func (m *Model) triggerTest(node *filesystem.Node) tea.Cmd {
-	m.lastRunNode = node
-	m.output = fmt.Sprintf("Running %s...\n", node.Name)
-	m.testOutputs[node.Path] = m.output
-
-	shouldShow := true
-	if m.activeTab == TabWatched {
-		if m.watchedCursor < len(m.watchedFiles) && m.watchedFiles[m.watchedCursor] != node.Path {
-			shouldShow = false
-		}
-	}
-
-	if shouldShow {
-		m.viewport.SetContent(m.output)
-		m.viewport.GotoBottom()
-	}
-
-	m.runningNodePath = node.Path
-	m.nodeStatus[node.Path] = StatusRunning
-
-	job, err := runner.PrepareJob(node.Path)
-	if err != nil {
-		m.output += "Error: Could not find package.json\n"
-		m.viewport.SetContent(m.output)
-		m.nodeStatus[node.Path] = StatusFail
-		return nil
-	}
-
-	return func() tea.Msg {
-		m.testRunner.Run(job.Command, job.Args, job.Root)
-		return nil
-	}
 }

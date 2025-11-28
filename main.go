@@ -5,12 +5,15 @@ import (
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jesspatton/lazytest/engine"
 	"github.com/jesspatton/lazytest/ui"
 )
 
 // main is the entry point of the application.
 func main() {
-	p := tea.NewProgram(ui.NewModel(), tea.WithAltScreen())
+	cwd, _ := os.Getwd()
+	eng := engine.New(cwd)
+	p := tea.NewProgram(ui.NewModel(eng), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)

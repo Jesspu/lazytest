@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/jesspatton/lazytest/engine"
 	"github.com/jesspatton/lazytest/filesystem"
 )
 
@@ -46,7 +47,7 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	}
 
 	if m.activeTab == TabExplorer {
-		if m.fileTree == nil {
+		if m.engine.State.Tree == nil {
 			explorerView.WriteString("Scanning...")
 		} else {
 			start, end := m.calculateVisibleRange(treeHeight)
@@ -61,18 +62,18 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 		}
 	} else {
 		// Render Watched Files
-		if len(m.watchedFiles) == 0 {
+		if len(m.engine.State.Watched) == 0 {
 			explorerView.WriteString("No watched files.\nPress 'w' on a file to watch it.")
 		} else {
 			start := 0
-			end := len(m.watchedFiles)
-			if len(m.watchedFiles) > treeHeight {
+			end := len(m.engine.State.Watched)
+			if len(m.engine.State.Watched) > treeHeight {
 				if m.watchedCursor < treeHeight/2 {
 					start = 0
 					end = treeHeight
-				} else if m.watchedCursor > len(m.watchedFiles)-treeHeight/2 {
-					start = len(m.watchedFiles) - treeHeight
-					end = len(m.watchedFiles)
+				} else if m.watchedCursor > len(m.engine.State.Watched)-treeHeight/2 {
+					start = len(m.engine.State.Watched) - treeHeight
+					end = len(m.engine.State.Watched)
 				} else {
 					start = m.watchedCursor - treeHeight/2
 					end = m.watchedCursor + treeHeight/2
@@ -80,7 +81,7 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 			}
 
 			for i := start; i < end; i++ {
-				path := m.watchedFiles[i]
+				path := m.engine.State.Watched[i]
 				name := path[strings.LastIndex(path, string(os.PathSeparator))+1:]
 
 				cursor := " "
@@ -89,15 +90,15 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 				}
 
 				// Get status for this file
-				status, ok := m.nodeStatus[path]
+				status, ok := m.engine.State.NodeStatus[path]
 				icon := "📄"
 				if ok {
 					switch status {
-					case StatusRunning:
+					case engine.StatusRunning:
 						icon = "⏳"
-					case StatusPass:
+					case engine.StatusPass:
 						icon = "✅"
-					case StatusFail:
+					case engine.StatusFail:
 						icon = "❌"
 					}
 				}
@@ -186,7 +187,7 @@ func (m Model) renderNode(b *strings.Builder, node DisplayNode, index int) {
 
 	// Check if watched
 	watchIcon := "  "
-	for _, watched := range m.watchedFiles {
+	for _, watched := range m.engine.State.Watched {
 		if watched == node.Path {
 			watchIcon = "👁 "
 			break
@@ -231,17 +232,17 @@ func (m Model) getNodeIcon(node *filesystem.Node) string {
 		return "📁"
 	}
 
-	status, ok := m.nodeStatus[node.Path]
+	status, ok := m.engine.State.NodeStatus[node.Path]
 	if !ok {
 		return "📄"
 	}
 
 	switch status {
-	case StatusRunning:
+	case engine.StatusRunning:
 		return "⏳"
-	case StatusPass:
+	case engine.StatusPass:
 		return "✅"
-	case StatusFail:
+	case engine.StatusFail:
 		return "❌"
 	default:
 		return "📄"
