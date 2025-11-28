@@ -2,6 +2,7 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,7 +73,14 @@ func LoadConfig(root string) Config {
 func BuildCommandString(template string, testPath string) (string, []string) {
 	// Simple replacement for MVP
 	// In a real app, we might use a template engine
-	cmdStr := strings.ReplaceAll(template, "<path>", testPath)
+	cmdStr := template
+	if strings.Contains(template, "<path>") {
+		cmdStr = strings.ReplaceAll(template, "<path>", testPath)
+	} else {
+		// If <path> is not specified, append it to the end
+		cmdStr = fmt.Sprintf("%s %s", template, testPath)
+	}
+
 	parts := strings.Fields(cmdStr)
 	if len(parts) == 0 {
 		return "", nil
