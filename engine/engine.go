@@ -161,6 +161,10 @@ func (e *Engine) ToggleWatch(path string) {
 	e.State.Watched = append(e.State.Watched, path)
 }
 
+func (e *Engine) ClearWatched() {
+	e.State.Watched = []string{}
+}
+
 // Internal Commands
 
 func (e *Engine) RefreshTree() tea.Msg {
@@ -196,4 +200,41 @@ func (e *Engine) waitForUpdates() tea.Msg {
 		return nil
 	}
 	return update
+}
+
+// Accessors
+
+func (e *Engine) GetWatchedFiles() []string {
+	return e.State.Watched
+}
+
+func (e *Engine) GetTestOutput(path string) (string, bool) {
+	val, ok := e.State.TestOutputs[path]
+	return val, ok
+}
+
+func (e *Engine) GetNodeStatus(path string) (TestStatus, bool) {
+	val, ok := e.State.NodeStatus[path]
+	return val, ok
+}
+
+func (e *Engine) GetTree() *filesystem.Node {
+	return e.State.Tree
+}
+
+func (e *Engine) GetRunningNode() *filesystem.Node {
+	return e.State.RunningNode
+}
+
+func (e *Engine) GetCurrentOutput() string {
+	return e.State.CurrentOutput
+}
+
+func (e *Engine) IsWatched(path string) bool {
+	for _, p := range e.State.Watched {
+		if p == path {
+			return true
+		}
+	}
+	return false
 }

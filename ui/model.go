@@ -55,7 +55,6 @@ type Model struct {
 
 	// Tab State
 	activeTab     LeftTab
-	watchedFiles  []string
 	watchedCursor int
 
 	// Search State
@@ -135,16 +134,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.engine.RefreshTree
 			case key.Matches(msg, m.keys.ReRunLast):
 				// TODO: Implement ReRunLast in Engine
-				if m.engine.State.RunningNode != nil {
+				if m.engine.GetRunningNode() != nil {
 					// This logic is slightly different now, we might need a LastRunNode in State
 				}
 			case key.Matches(msg, m.keys.NextTab):
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
 						m.activeTab = TabWatched
-						if m.watchedCursor < len(m.engine.State.Watched) {
-							path := m.engine.State.Watched[m.watchedCursor]
-							if out, ok := m.engine.State.TestOutputs[path]; ok {
+						if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
+							path := m.engine.GetWatchedFiles()[m.watchedCursor]
+							if out, ok := m.engine.GetTestOutput(path); ok {
 								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 							} else {
 								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
@@ -153,7 +152,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					} else {
 						m.activeTab = TabExplorer
-						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.State.CurrentOutput))
+						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
 						m.viewport.GotoBottom()
 					}
 				}
@@ -161,9 +160,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
 						m.activeTab = TabWatched
-						if m.watchedCursor < len(m.engine.State.Watched) {
-							path := m.engine.State.Watched[m.watchedCursor]
-							if out, ok := m.engine.State.TestOutputs[path]; ok {
+						if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
+							path := m.engine.GetWatchedFiles()[m.watchedCursor]
+							if out, ok := m.engine.GetTestOutput(path); ok {
 								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 							} else {
 								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
@@ -172,12 +171,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					} else {
 						m.activeTab = TabExplorer
-						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.State.CurrentOutput))
+						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
 						m.viewport.GotoBottom()
 					}
 				}
 			case key.Matches(msg, m.keys.ClearWatched):
-				m.engine.State.Watched = []string{}
+				m.engine.ClearWatched()
 				m.watchedCursor = 0
 				if m.activeTab == TabWatched {
 					m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No watched files.\nPress 'w' on a file to watch it."))
@@ -192,8 +191,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case key.Matches(msg, m.keys.Up):
 					if m.watchedCursor > 0 {
 						m.watchedCursor--
-						path := m.engine.State.Watched[m.watchedCursor]
-						if out, ok := m.engine.State.TestOutputs[path]; ok {
+						path := m.engine.GetWatchedFiles()[m.watchedCursor]
+						if out, ok := m.engine.GetTestOutput(path); ok {
 							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 						} else {
 							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
@@ -201,10 +200,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.viewport.GotoBottom()
 					}
 				case key.Matches(msg, m.keys.Down):
-					if m.watchedCursor < len(m.engine.State.Watched)-1 {
+					if m.watchedCursor < len(m.engine.GetWatchedFiles())-1 {
 						m.watchedCursor++
-						path := m.engine.State.Watched[m.watchedCursor]
-						if out, ok := m.engine.State.TestOutputs[path]; ok {
+						path := m.engine.GetWatchedFiles()[m.watchedCursor]
+						if out, ok := m.engine.GetTestOutput(path); ok {
 							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 						} else {
 							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
@@ -212,8 +211,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.viewport.GotoBottom()
 					}
 				case key.Matches(msg, m.keys.Enter):
-					if m.watchedCursor < len(m.engine.State.Watched) {
-						path := m.engine.State.Watched[m.watchedCursor]
+					if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
+						path := m.engine.GetWatchedFiles()[m.watchedCursor]
 						// Create a dummy node for triggering the test
 						node := &filesystem.Node{
 							Path: path,
@@ -222,10 +221,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, m.engine.TriggerTest(node)
 					}
 				case key.Matches(msg, m.keys.ToggleWatch):
-					if m.watchedCursor < len(m.engine.State.Watched) {
-						path := m.engine.State.Watched[m.watchedCursor]
+					if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
+						path := m.engine.GetWatchedFiles()[m.watchedCursor]
 						m.engine.ToggleWatch(path)
-						if m.watchedCursor >= len(m.engine.State.Watched) && m.watchedCursor > 0 {
+						if m.watchedCursor >= len(m.engine.GetWatchedFiles()) && m.watchedCursor > 0 {
 							m.watchedCursor--
 						}
 					}
@@ -378,29 +377,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.viewport.Width = paneWidth
 			m.viewport.Height = viewportHeight
-			m.viewport.SetContent(m.wrapOutput(paneWidth, m.engine.State.CurrentOutput))
+			m.viewport.SetContent(m.wrapOutput(paneWidth, m.engine.GetCurrentOutput()))
 		}
 
 	case engine.TreeLoadedMsg:
-		m.flatNodes = flattenNodes(m.engine.State.Tree)
+		m.flatNodes = flattenNodes(m.engine.GetTree())
 		return m, nil
 
 	case runner.OutputUpdate:
 		shouldShow := true
 		if m.activeTab == TabWatched {
-			if m.watchedCursor < len(m.engine.State.Watched) && m.engine.State.Watched[m.watchedCursor] != m.engine.State.RunningNode.Path {
+			if m.watchedCursor < len(m.engine.GetWatchedFiles()) && m.engine.GetWatchedFiles()[m.watchedCursor] != m.engine.GetRunningNode().Path {
 				shouldShow = false
 			}
 		}
 
 		if shouldShow {
-			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.State.CurrentOutput))
+			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
 			m.viewport.GotoBottom()
 		}
 		return m, tea.Batch(cmds...)
 
 	case runner.StatusUpdate:
-		m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.State.CurrentOutput))
+		m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
 		m.viewport.GotoBottom()
 		return m, tea.Batch(cmds...)
 	}
