@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/jesspatton/lazytest/filesystem"
 )
 
 // Graph represents the dependency graph of the project.
@@ -35,13 +37,15 @@ func (g *Graph) Build(root string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
+	ignorer := filesystem.NewIgnorer(root)
+
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
 		if info.IsDir() {
-			if shouldIgnore(info.Name()) {
+			if ignorer.ShouldIgnore(path, root) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -236,16 +240,6 @@ func (g *Graph) removeReverseDependency(dependency, dependent string) {
 			}
 		}
 	}
-}
-
-func shouldIgnore(name string) bool {
-	ignored := []string{"node_modules", ".git", "dist", "build", "coverage"}
-	for _, i := range ignored {
-		if name == i {
-			return true
-		}
-	}
-	return false
 }
 
 func isSourceFile(name string) bool {

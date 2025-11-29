@@ -23,6 +23,8 @@ func Walk(root string) (*Node, error) {
 		IsDir: true,
 	}
 
+	ignorer := NewIgnorer(root)
+
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -36,7 +38,7 @@ func Walk(root string) (*Node, error) {
 
 		// Filter ignored directories
 		if info.IsDir() {
-			if shouldIgnore(info.Name()) {
+			if ignorer.ShouldIgnore(path, root) {
 				return filepath.SkipDir
 			}
 			// We don't add directories immediately; we add them when we find a file inside them
@@ -54,17 +56,6 @@ func Walk(root string) (*Node, error) {
 	})
 
 	return rootNode, err
-}
-
-// shouldIgnore checks if a directory should be ignored during traversal.
-func shouldIgnore(name string) bool {
-	ignored := []string{"node_modules", ".git", "dist", "build", "coverage"}
-	for _, i := range ignored {
-		if name == i {
-			return true
-		}
-	}
-	return strings.HasSuffix(name, ".log")
 }
 
 // isTestFile checks if a file is a test file based on its extension.

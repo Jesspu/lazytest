@@ -14,6 +14,8 @@ type Watcher struct {
 	fsWatcher *fsnotify.Watcher
 	Events    chan string // Signal to refresh the tree, carries the changed file path
 	done      chan struct{}
+	ignorer   *Ignorer
+	root      string
 }
 
 // NewWatcher creates a new Watcher for the given root directory.
@@ -27,6 +29,8 @@ func NewWatcher(root string) (*Watcher, error) {
 		fsWatcher: fsWatcher,
 		Events:    make(chan string, 10), // Buffered to prevent blocking
 		done:      make(chan struct{}),
+		ignorer:   NewIgnorer(root),
+		root:      root,
 	}
 
 	// Add root and all subdirectories to watcher
@@ -37,7 +41,7 @@ func NewWatcher(root string) (*Watcher, error) {
 			return err
 		}
 		if info.IsDir() {
-			if shouldIgnore(info.Name()) {
+			if w.ignorer.ShouldIgnore(path, root) {
 				return filepath.SkipDir
 			}
 			return w.fsWatcher.Add(path)
@@ -70,7 +74,7 @@ func (w *Watcher) startLoop() {
 			return
 		case event, ok := <-w.fsWatcher.Events:
 			// Ignore ignored files
-			if shouldIgnore(filepath.Base(event.Name)) {
+			if w.ignorer.ShouldIgnore(event.Name, w.root) {
 				continue
 			}
 
