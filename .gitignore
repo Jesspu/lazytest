@@ -2,3 +2,4 @@ debug.log
 .DS_Store
 lazytest
 test_project
+coverage.out
