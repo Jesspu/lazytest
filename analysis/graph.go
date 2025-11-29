@@ -1,7 +1,6 @@
 package analysis
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -37,26 +36,15 @@ func (g *Graph) Build(root string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	ignorer := filesystem.NewIgnorer(root)
+	fileListQueue := filesystem.StreamFiles(root)
 
-	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	for f := range fileListQueue {
+		if isSourceFile(f.Filename) {
+			g.processFile(f.Location)
 		}
+	}
 
-		if info.IsDir() {
-			if ignorer.ShouldIgnore(path, root) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if isSourceFile(info.Name()) {
-			g.processFile(path)
-		}
-
-		return nil
-	})
+	return nil
 }
 
 // Update re-parses a specific file and updates the graph.

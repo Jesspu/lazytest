@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -14,7 +15,6 @@ type Watcher struct {
 	fsWatcher *fsnotify.Watcher
 	Events    chan string // Signal to refresh the tree, carries the changed file path
 	done      chan struct{}
-	ignorer   *Ignorer
 	root      string
 }
 
@@ -29,28 +29,33 @@ func NewWatcher(root string) (*Watcher, error) {
 		fsWatcher: fsWatcher,
 		Events:    make(chan string, 10), // Buffered to prevent blocking
 		done:      make(chan struct{}),
-		ignorer:   NewIgnorer(root),
 		root:      root,
 	}
 
-	// Add root and all subdirectories to watcher
-	// Note: fsnotify is not recursive by default on Linux, but we'll walk and add.
-	// On Mac (kqueue) it might be different, but explicit add is safer.
-	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			if w.ignorer.ShouldIgnore(path, root) {
-				return filepath.SkipDir
+	// Use gocodewalker to find all relevant directories to watch
+	fileListQueue := StreamFiles(root)
+
+	// Always watch root
+	_ = w.fsWatcher.Add(root)
+
+	// Track added directories to avoid duplicates
+	addedDirs := make(map[string]bool)
+	addedDirs[root] = true
+
+	for f := range fileListQueue {
+		dir := filepath.Dir(f.Location)
+		// Add this directory and all its parents up to root
+		for dir != root && dir != "." && dir != "/" {
+			if addedDirs[dir] {
+				break
 			}
-			return w.fsWatcher.Add(path)
+			// We need to verify it is inside root, which it should be
+			if strings.HasPrefix(dir, root) {
+				_ = w.fsWatcher.Add(dir)
+				addedDirs[dir] = true
+			}
+			dir = filepath.Dir(dir)
 		}
-		return nil
-	})
-	if err != nil {
-		fsWatcher.Close()
-		return nil, err
 	}
 
 	go w.startLoop()
@@ -73,8 +78,8 @@ func (w *Watcher) startLoop() {
 		case <-w.done:
 			return
 		case event, ok := <-w.fsWatcher.Events:
-			// Ignore ignored files
-			if w.ignorer.ShouldIgnore(event.Name, w.root) {
+			// Ignore ignored files/directories
+			if w.shouldIgnore(event.Name) {
 				continue
 			}
 
@@ -110,4 +115,18 @@ func (w *Watcher) startLoop() {
 			log.Println("Watcher error:", err)
 		}
 	}
+}
+
+// shouldIgnore checks if the path should be ignored.
+// Since we removed the complex Ignorer, we use a simple list of common ignores.
+// This is used for runtime events. Initial setup uses gocodewalker which respects .gitignore.
+func (w *Watcher) shouldIgnore(path string) bool {
+	base := filepath.Base(path)
+	if base == ".git" || base == "node_modules" || base == "dist" || base == "build" || base == "coverage" || base == ".DS_Store" {
+		return true
+	}
+	if strings.HasSuffix(base, ".log") {
+		return true
+	}
+	return false
 }

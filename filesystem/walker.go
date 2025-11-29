@@ -23,39 +23,15 @@ func Walk(root string) (*Node, error) {
 		IsDir: true,
 	}
 
-	ignorer := NewIgnorer(root)
+	fileListQueue := StreamFiles(root)
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	for f := range fileListQueue {
+		if isTestFile(f.Filename) {
+			addPathToTree(rootNode, f.Location, root)
 		}
+	}
 
-		// Skip root itself in the walk callback to avoid infinite recursion if we were doing manual recursion,
-		// but filepath.Walk handles it. We just need to handle children.
-		if path == root {
-			return nil
-		}
-
-		// Filter ignored directories
-		if info.IsDir() {
-			if ignorer.ShouldIgnore(path, root) {
-				return filepath.SkipDir
-			}
-			// We don't add directories immediately; we add them when we find a file inside them
-			// OR we can build the tree structure as we go.
-			// For simplicity in this MVP, let's build the full tree of directories that contain tests.
-			return nil
-		}
-
-		// Check for test files
-		if isTestFile(info.Name()) {
-			addPathToTree(rootNode, path, root)
-		}
-
-		return nil
-	})
-
-	return rootNode, err
+	return rootNode, nil
 }
 
 // isTestFile checks if a file is a test file based on its extension.
