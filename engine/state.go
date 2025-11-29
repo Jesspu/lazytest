@@ -31,6 +31,7 @@ type State struct {
 
 	// Live State
 	RunningNode   *filesystem.Node
+	LastRunNode   *filesystem.Node
 	CurrentOutput string
 	RootPath      string
 }

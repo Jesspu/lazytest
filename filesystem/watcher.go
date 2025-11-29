@@ -12,7 +12,7 @@ import (
 // Watcher monitors the file system for changes.
 type Watcher struct {
 	fsWatcher *fsnotify.Watcher
-	Events    chan struct{} // Signal to refresh the tree
+	Events    chan string // Signal to refresh the tree, carries the changed file path
 	done      chan struct{}
 }
 
@@ -25,7 +25,7 @@ func NewWatcher(root string) (*Watcher, error) {
 
 	w := &Watcher{
 		fsWatcher: fsWatcher,
-		Events:    make(chan struct{}, 10), // Buffered to prevent blocking
+		Events:    make(chan string, 10), // Buffered to prevent blocking
 		done:      make(chan struct{}),
 	}
 
@@ -96,7 +96,7 @@ func (w *Watcher) startLoop() {
 				timer.Stop()
 			}
 			timer = time.AfterFunc(debounceDuration, func() {
-				w.Events <- struct{}{}
+				w.Events <- event.Name
 			})
 
 		case err, ok := <-w.fsWatcher.Errors:

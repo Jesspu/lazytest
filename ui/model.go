@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -133,10 +134,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key.Matches(msg, m.keys.Refresh):
 				return m, m.engine.RefreshTree
 			case key.Matches(msg, m.keys.ReRunLast):
-				// TODO: Implement ReRunLast in Engine
-				if m.engine.GetRunningNode() != nil {
-					// This logic is slightly different now, we might need a LastRunNode in State
-				}
+				return m, m.engine.ReRunLast()
 			case key.Matches(msg, m.keys.NextTab):
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
@@ -346,6 +344,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.engine.ToggleWatch(node.Path)
 						}
 					}
+				case key.Matches(msg, m.keys.AddRelated):
+					changedFiles, err := filesystem.GetChangedFiles(m.engine.State.RootPath)
+					if err != nil {
+						m.engine.State.CurrentOutput += fmt.Sprintf("Error getting changed files: %v\n", err)
+					} else {
+						count := 0
+						for _, src := range changedFiles {
+							related := m.engine.FindRelatedTests(src)
+							for _, test := range related {
+								if !m.engine.IsWatched(test) {
+									m.engine.ToggleWatch(test)
+									count++
+								}
+							}
+						}
+						m.engine.State.CurrentOutput += fmt.Sprintf("Added %d related tests for %d changed files\n", count, len(changedFiles))
+					}
+				default:
+					// No matching key
 				}
 			}
 		} else {

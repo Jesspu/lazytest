@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/jesspatton/lazytest/analysis"
 	"github.com/jesspatton/lazytest/filesystem"
 	"github.com/jesspatton/lazytest/runner"
 )
@@ -13,7 +14,7 @@ import (
 // Messages
 
 // WatcherMsg indicates a file system event occurred.
-type WatcherMsg struct{}
+type WatcherMsg string
 
 // TreeLoadedMsg carries the new file tree after a refresh.
 type TreeLoadedMsg *filesystem.Node
@@ -28,6 +29,7 @@ type Engine struct {
 	State   State
 	runner  *runner.Runner
 	watcher *filesystem.Watcher
+	Graph   *analysis.Graph
 }
 
 // New creates a new Engine instance.
@@ -35,6 +37,7 @@ func New(rootPath string) *Engine {
 	return &Engine{
 		State:  NewState(rootPath),
 		runner: runner.NewRunner(),
+		Graph:  analysis.NewGraph(),
 	}
 }
 
@@ -43,6 +46,7 @@ func (e *Engine) Init() tea.Cmd {
 	return tea.Batch(
 		e.RefreshTree,
 		e.startWatcher,
+		e.buildGraph,
 		e.waitForUpdates,
 	)
 }
@@ -55,18 +59,30 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 		return e.waitForWatcherEvents
 
 	case WatcherMsg:
+		path := string(msg)
+
+		// Update dependency graph
+		e.Graph.Update(path)
+
 		// Queue watched files
-		for _, path := range e.State.Watched {
+		for _, watchedPath := range e.State.Watched {
+			// If the changed file is a watched file, or if it's a dependency of a watched file?
+			// The current logic just re-queues ALL watched files on ANY change.
+			// This is inefficient but safe.
+			// Ideally we only queue if 'path' affects 'watchedPath'.
+			// But for now let's keep the existing logic of queuing all watched files,
+			// but we MUST ensure the graph is updated first (done above).
+
 			// Check if already in queue
 			found := false
 			for _, q := range e.State.Queue {
-				if q == path {
+				if q == watchedPath {
 					found = true
 					break
 				}
 			}
 			if !found {
-				e.State.Queue = append(e.State.Queue, path)
+				e.State.Queue = append(e.State.Queue, watchedPath)
 			}
 		}
 
@@ -129,6 +145,7 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 
 func (e *Engine) TriggerTest(node *filesystem.Node) tea.Cmd {
 	e.State.RunningNode = node
+	e.State.LastRunNode = node
 	e.State.CurrentOutput = fmt.Sprintf("Running %s...\n", node.Name)
 	e.State.TestOutputs[node.Path] = e.State.CurrentOutput
 	e.State.NodeStatus[node.Path] = StatusRunning
@@ -146,6 +163,13 @@ func (e *Engine) TriggerTest(node *filesystem.Node) tea.Cmd {
 		e.runner.Run(job.Command, job.Args, job.Root)
 		return nil
 	}
+}
+
+func (e *Engine) ReRunLast() tea.Cmd {
+	if e.State.LastRunNode != nil {
+		return e.TriggerTest(e.State.LastRunNode)
+	}
+	return nil
 }
 
 func (e *Engine) ToggleWatch(path string) {
@@ -187,11 +211,11 @@ func (e *Engine) waitForWatcherEvents() tea.Msg {
 	if e.watcher == nil {
 		return nil
 	}
-	_, ok := <-e.watcher.Events
+	eventPath, ok := <-e.watcher.Events
 	if !ok {
 		return nil
 	}
-	return WatcherMsg{}
+	return WatcherMsg(eventPath)
 }
 
 func (e *Engine) waitForUpdates() tea.Msg {
@@ -237,4 +261,23 @@ func (e *Engine) IsWatched(path string) bool {
 		}
 	}
 	return false
+}
+
+func (e *Engine) FindRelatedTests(path string) []string {
+	dependents := e.Graph.GetDependents(path)
+	var tests []string
+	for _, dep := range dependents {
+		if strings.HasSuffix(dep, ".test.ts") || strings.HasSuffix(dep, ".test.js") ||
+			strings.HasSuffix(dep, ".spec.ts") || strings.HasSuffix(dep, ".spec.js") ||
+			strings.HasSuffix(dep, ".test.tsx") || strings.HasSuffix(dep, ".test.jsx") ||
+			strings.HasSuffix(dep, ".spec.tsx") || strings.HasSuffix(dep, ".spec.jsx") {
+			tests = append(tests, dep)
+		}
+	}
+	return tests
+}
+
+func (e *Engine) buildGraph() tea.Msg {
+	e.Graph.Build(e.State.RootPath)
+	return nil
 }
