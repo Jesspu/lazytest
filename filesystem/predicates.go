@@ -1,6 +1,9 @@
 package filesystem
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // IsTestFile checks if a file is a test file based on its extension.
 func IsTestFile(name string) bool {
@@ -23,4 +26,15 @@ func IsSourceFile(name string) bool {
 		}
 	}
 	return false
+}
+
+// IsConfigFile checks if a file is a configuration file that might affect tests.
+func IsConfigFile(name string) bool {
+	base := filepath.Base(name)
+	return base == "package.json" ||
+		base == "tsconfig.json" ||
+		strings.HasPrefix(base, "vite.config.") ||
+		strings.HasPrefix(base, "jest.config.") ||
+		strings.HasPrefix(base, "babel.config.") ||
+		strings.HasPrefix(base, "webpack.config.")
 }
