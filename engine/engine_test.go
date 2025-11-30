@@ -165,3 +165,56 @@ func TestUpdateLoop(t *testing.T) {
 		t.Error("Expected RunningNode to be nil after finish")
 	}
 }
+
+func TestSmartQueueing(t *testing.T) {
+	e := New("/tmp")
+
+	// Watch three test files
+	test1 := "/tmp/app.test.js"
+	test2 := "/tmp/utils.test.js"
+	test3 := "/tmp/unrelated.test.js"
+
+	e.ToggleWatch(test1)
+	e.ToggleWatch(test2)
+	e.ToggleWatch(test3)
+
+	// Verify all are watched
+	if !e.IsWatched(test1) || !e.IsWatched(test2) || !e.IsWatched(test3) {
+		t.Fatal("Expected all files to be watched")
+	}
+
+	// Set a running node so the queue won't be consumed immediately
+	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
+
+	// Simulate a change to test1 (which should only affect test1 itself)
+	// Since we don't have a real graph with dependencies, this will queue only test1
+	msg := WatcherMsg(test1)
+	_ = e.Update(msg) // Call Update, which returns a tea.Cmd
+
+	// Verify only test1 is queued (not test2 or test3)
+	if len(e.State.Queue) != 1 {
+		t.Errorf("Expected queue length 1, got %d. Queue: %v", len(e.State.Queue), e.State.Queue)
+	}
+	if len(e.State.Queue) > 0 && e.State.Queue[0] != test1 {
+		t.Errorf("Expected queue to contain %s, got %s", test1, e.State.Queue[0])
+	}
+
+	// Verify that test1 is NOT queued again if we send the same message
+	msg = WatcherMsg(test1)
+	_ = e.Update(msg)
+	if len(e.State.Queue) != 1 {
+		t.Errorf("Expected queue to remain length 1 (deduplication), got %d", len(e.State.Queue))
+	}
+
+	// Clear the queue
+	e.State.Queue = []string{}
+
+	// Now simulate a change to a file that isn't watched
+	// This should queue nothing (since no watched files depend on it in our empty graph)
+	msg = WatcherMsg("/tmp/some-source.js")
+	_ = e.Update(msg)
+
+	if len(e.State.Queue) != 0 {
+		t.Errorf("Expected queue to be empty for unrelated file change, got %d items: %v", len(e.State.Queue), e.State.Queue)
+	}
+}

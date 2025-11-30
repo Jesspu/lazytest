@@ -22,7 +22,7 @@ const (
 type State struct {
 	// Data
 	Tree    *filesystem.Node
-	Watched []string
+	Watched map[string]struct{}
 
 	// Test Execution State
 	Queue       []string
@@ -42,7 +42,7 @@ func NewState(rootPath string) State {
 		RootPath:    rootPath,
 		NodeStatus:  make(map[string]TestStatus),
 		TestOutputs: make(map[string]string),
-		Watched:     make([]string, 0),
+		Watched:     make(map[string]struct{}),
 		Queue:       make([]string, 0),
 	}
 }

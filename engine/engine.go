@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -67,25 +68,39 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 		// Update dependency graph
 		e.Graph.Update(path)
 
-		// Queue watched files
-		for _, watchedPath := range e.State.Watched {
-			// If the changed file is a watched file, or if it's a dependency of a watched file?
-			// The current logic just re-queues ALL watched files on ANY change.
-			// This is inefficient but safe.
-			// Ideally we only queue if 'path' affects 'watchedPath'.
-			// But for now let's keep the existing logic of queuing all watched files,
-			// but we MUST ensure the graph is updated first (done above).
+		// Smart queueing: Only queue watched tests that are affected by this change
+		// Build a set of queued items for O(1) lookup
+		queuedSet := make(map[string]struct{})
+		for _, q := range e.State.Queue {
+			queuedSet[q] = struct{}{}
+		}
 
-			// Check if already in queue
-			found := false
-			for _, q := range e.State.Queue {
-				if q == watchedPath {
-					found = true
-					break
+		// Find all files affected by this change (transitive dependents)
+		dependents := e.Graph.GetDependents(path)
+
+		// Queue watched tests that are in the affected set
+		for watchedPath := range e.State.Watched {
+			// Check if this watched file is affected
+			affected := false
+			if watchedPath == path {
+				// The watched file itself was changed
+				affected = true
+			} else {
+				// Check if it's in the dependents list
+				for _, dep := range dependents {
+					if dep == watchedPath {
+						affected = true
+						break
+					}
 				}
 			}
-			if !found {
-				e.State.Queue = append(e.State.Queue, watchedPath)
+
+			// Only queue if affected and not already queued
+			if affected {
+				if _, alreadyQueued := queuedSet[watchedPath]; !alreadyQueued {
+					e.State.Queue = append(e.State.Queue, watchedPath)
+					queuedSet[watchedPath] = struct{}{}
+				}
 			}
 		}
 
@@ -177,19 +192,17 @@ func (e *Engine) ReRunLast() tea.Cmd {
 
 func (e *Engine) ToggleWatch(path string) {
 	// Check if already watched
-	for i, p := range e.State.Watched {
-		if p == path {
-			// Remove
-			e.State.Watched = append(e.State.Watched[:i], e.State.Watched[i+1:]...)
-			return
-		}
+	if _, exists := e.State.Watched[path]; exists {
+		// Remove
+		delete(e.State.Watched, path)
+	} else {
+		// Add
+		e.State.Watched[path] = struct{}{}
 	}
-	// Add
-	e.State.Watched = append(e.State.Watched, path)
 }
 
 func (e *Engine) ClearWatched() {
-	e.State.Watched = []string{}
+	e.State.Watched = make(map[string]struct{})
 }
 
 // Internal Commands
@@ -232,7 +245,15 @@ func (e *Engine) waitForUpdates() tea.Msg {
 // Accessors
 
 func (e *Engine) GetWatchedFiles() []string {
-	return e.State.Watched
+	// Convert map to slice and sort for consistent ordering
+	// (maps have non-deterministic iteration order in Go)
+	result := make([]string, 0, len(e.State.Watched))
+	for path := range e.State.Watched {
+		result = append(result, path)
+	}
+	// Sort alphabetically for stable UI rendering
+	sort.Strings(result)
+	return result
 }
 
 func (e *Engine) GetTestOutput(path string) (string, bool) {
@@ -258,12 +279,8 @@ func (e *Engine) GetCurrentOutput() string {
 }
 
 func (e *Engine) IsWatched(path string) bool {
-	for _, p := range e.State.Watched {
-		if p == path {
-			return true
-		}
-	}
-	return false
+	_, exists := e.State.Watched[path]
+	return exists
 }
 
 func (e *Engine) FindRelatedTests(path string) []string {
