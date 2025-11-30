@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,6 +11,8 @@ import (
 	"github.com/jesspatton/lazytest/filesystem"
 	"github.com/jesspatton/lazytest/runner"
 )
+
+var testFileRegex = regexp.MustCompile(`\.(test|spec)\.[jt]sx?$`)
 
 // Messages
 
@@ -267,10 +270,7 @@ func (e *Engine) FindRelatedTests(path string) []string {
 	dependents := e.Graph.GetDependents(path)
 	var tests []string
 	for _, dep := range dependents {
-		if strings.HasSuffix(dep, ".test.ts") || strings.HasSuffix(dep, ".test.js") ||
-			strings.HasSuffix(dep, ".spec.ts") || strings.HasSuffix(dep, ".spec.js") ||
-			strings.HasSuffix(dep, ".test.tsx") || strings.HasSuffix(dep, ".test.jsx") ||
-			strings.HasSuffix(dep, ".spec.tsx") || strings.HasSuffix(dep, ".spec.jsx") {
+		if testFileRegex.MatchString(dep) {
 			tests = append(tests, dep)
 		}
 	}
