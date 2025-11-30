@@ -359,7 +359,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								}
 							}
 						}
-						m.engine.State.CurrentOutput += fmt.Sprintf("Added %d related tests for %d changed files\n", count, len(changedFiles))
 					}
 				default:
 					// No matching key
