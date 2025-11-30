@@ -47,7 +47,7 @@ func TestWalk(t *testing.T) {
 	var countTests func(*Node) int
 	countTests = func(n *Node) int {
 		count := 0
-		if !n.IsDir && isTestFile(n.Name) {
+		if !n.IsDir && IsTestFile(n.Name) {
 			count++
 		}
 		for _, child := range n.Children {
@@ -59,28 +59,5 @@ func TestWalk(t *testing.T) {
 	testCount := countTests(rootNode)
 	if testCount != 2 {
 		t.Errorf("expected 2 test files in tree, got %d", testCount)
-	}
-}
-
-func TestIsTestFile(t *testing.T) {
-	tests := []struct {
-		name     string
-		filename string
-		want     bool
-	}{
-		{"ts test", "foo.test.ts", true},
-		{"js test", "foo.test.js", true},
-		{"tsx test", "foo.test.tsx", true},
-		{"spec ts", "foo.spec.ts", true},
-		{"normal file", "foo.ts", false},
-		{"readme", "README.md", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := isTestFile(tt.filename); got != tt.want {
-				t.Errorf("isTestFile(%q) = %v, want %v", tt.filename, got, tt.want)
-			}
-		})
 	}
 }

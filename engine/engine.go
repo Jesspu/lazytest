@@ -3,7 +3,6 @@ package engine
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -12,8 +11,6 @@ import (
 	"github.com/jesspatton/lazytest/filesystem"
 	"github.com/jesspatton/lazytest/runner"
 )
-
-var testFileRegex = regexp.MustCompile(`\.(test|spec)\.[jt]sx?$`)
 
 // Messages
 
@@ -287,7 +284,7 @@ func (e *Engine) FindRelatedTests(path string) []string {
 	dependents := e.Graph.GetDependents(path)
 	var tests []string
 	for _, dep := range dependents {
-		if testFileRegex.MatchString(dep) {
+		if filesystem.IsTestFile(dep) {
 			tests = append(tests, dep)
 		}
 	}

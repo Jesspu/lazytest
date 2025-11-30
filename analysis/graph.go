@@ -44,7 +44,7 @@ func (g *Graph) Build(root string) error {
 		go func() {
 			defer wg.Done()
 			for f := range fileListQueue {
-				if isSourceFile(f.Filename) {
+				if filesystem.IsSourceFile(f.Filename) {
 					g.Update(f.Location)
 				}
 			}
@@ -58,7 +58,7 @@ func (g *Graph) Build(root string) error {
 // Update re-parses a specific file and updates the graph.
 func (g *Graph) Update(path string) {
 	// Parse outside the lock
-	if !isSourceFile(filepath.Base(path)) {
+	if !filesystem.IsSourceFile(filepath.Base(path)) {
 		return
 	}
 
@@ -184,14 +184,4 @@ func (g *Graph) removeReverseDependency(dependency, dependent string) {
 			delete(g.Reverse, dependency)
 		}
 	}
-}
-
-func isSourceFile(name string) bool {
-	exts := []string{".ts", ".js", ".tsx", ".jsx"}
-	for _, ext := range exts {
-		if strings.HasSuffix(name, ext) {
-			return true
-		}
-	}
-	return false
 }
