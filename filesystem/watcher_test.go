@@ -24,7 +24,7 @@ func TestWatcher(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Create a file
-	testFile := filepath.Join(tmpDir, "test.txt")
+	testFile := filepath.Join(tmpDir, "test.js")
 	if err := os.WriteFile(testFile, []byte("hello"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -53,23 +53,28 @@ func TestWatcher(t *testing.T) {
 	}
 }
 
-func TestShouldIgnore(t *testing.T) {
-	w := &Watcher{}
-
+func TestWatcherAllowlist(t *testing.T) {
 	tests := []struct {
-		path string
-		want bool
+		path      string
+		wantEvent bool
+		isConfig  bool
 	}{
-		{"/path/to/.git", true},
-		{"/path/to/node_modules", true},
-		{"/path/to/normal.go", false},
-		{"/path/to/app.log", true},
-		{"/path/to/dist", true},
+		{"/path/to/test.ts", true, false},
+		{"/path/to/package.json", true, true},
+		{"/path/to/vite.config.ts", true, true},
+		{"/path/to/app.log", false, false},
+		{"/path/to/README.md", false, false},
+		{"/path/to/node_modules/pkg/index.js", true, false}, // Technically allowed by file extension, but usually ignored by walker
 	}
 
 	for _, tt := range tests {
-		if got := w.shouldIgnore(tt.path); got != tt.want {
-			t.Errorf("shouldIgnore(%q) = %v, want %v", tt.path, got, tt.want)
+		isSource := IsSourceFile(tt.path)
+		isConfig := IsConfigFile(tt.path)
+
+		gotEvent := isSource || isConfig
+
+		if gotEvent != tt.wantEvent {
+			t.Errorf("File %s: want event=%v, got source=%v, config=%v", tt.path, tt.wantEvent, isSource, isConfig)
 		}
 	}
 }

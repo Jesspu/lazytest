@@ -78,10 +78,6 @@ func (w *Watcher) startLoop() {
 		case <-w.done:
 			return
 		case event, ok := <-w.fsWatcher.Events:
-			// Ignore ignored files/directories
-			if w.shouldIgnore(event.Name) {
-				continue
-			}
 
 			if !ok {
 				return
@@ -97,7 +93,13 @@ func (w *Watcher) startLoop() {
 				info, err := os.Stat(event.Name)
 				if err == nil && info.IsDir() {
 					w.fsWatcher.Add(event.Name)
+					continue
 				}
+			}
+
+			// Allowlist: Only process events for source files, test files, and config files
+			if !IsSourceFile(event.Name) && !IsConfigFile(event.Name) {
+				continue
 			}
 
 			// Debounce logic
@@ -115,18 +117,4 @@ func (w *Watcher) startLoop() {
 			log.Println("Watcher error:", err)
 		}
 	}
-}
-
-// shouldIgnore checks if the path should be ignored.
-// Since we removed the complex Ignorer, we use a simple list of common ignores.
-// This is used for runtime events. Initial setup uses gocodewalker which respects .gitignore.
-func (w *Watcher) shouldIgnore(path string) bool {
-	base := filepath.Base(path)
-	if base == ".git" || base == "node_modules" || base == "dist" || base == "build" || base == "coverage" || base == ".DS_Store" {
-		return true
-	}
-	if strings.HasSuffix(base, ".log") {
-		return true
-	}
-	return false
 }
