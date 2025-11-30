@@ -89,62 +89,43 @@ func (g *Graph) Update(path string) {
 		g.addPendingImport(unresolved.Path, path)
 	}
 
-	// Check if this new/updated file resolves any pending imports
-	// We check if 'path' (without extension) matches any pending import paths.
-	pathNoExt := strings.TrimSuffix(path, filepath.Ext(path))
-
-	// Also handle index files (e.g. /utils/index.ts -> /utils)
-	if strings.HasSuffix(pathNoExt, "/index") {
-		pathNoExt = filepath.Dir(pathNoExt)
-	}
-
-	// We need to check exact matches or matches with extensions.
+	// Check if this new/updated file resolves any pending imports.
 	// The pending import path is the absolute path WITHOUT extension (from resolvePaths).
+	// Instead of iterating over all pending imports (O(N)), we generate the possible keys
+	// this file could satisfy and look them up directly (O(1)).
 
-	// Iterate over PendingImports (which are AbsPathPrefix -> [Dependents])
-	// This is inefficient if PendingImports is huge, but fine for now.
-	// Create a slice of keys to iterate over, as we might modify the map
-	pendingImportPathsToResolve := make([]string, 0, len(g.PendingImports))
-	for impPath := range g.PendingImports {
-		pendingImportPathsToResolve = append(pendingImportPathsToResolve, impPath)
+	candidates := []string{}
+
+	// 1. Exact match (e.g. import "./foo.js" -> /path/to/foo.js)
+	candidates = append(candidates, path)
+
+	// 2. Strip extension (e.g. import "./foo" -> /path/to/foo)
+	ext := filepath.Ext(path)
+	if ext != "" {
+		candidates = append(candidates, strings.TrimSuffix(path, ext))
 	}
 
-	for _, importPath := range pendingImportPathsToResolve {
-		// Ensure the importPath still exists in PendingImports, as it might have been resolved by a previous iteration
-		dependents, ok := g.PendingImports[importPath]
-		if !ok {
-			continue
-		}
+	// 3. Index files (e.g. import "./foo" -> /path/to/foo/index.ts -> /path/to/foo)
+	// We check if the file is an index file and add the parent directory as a candidate.
+	name := filepath.Base(path)
+	nameNoExt := strings.TrimSuffix(name, ext)
+	if nameNoExt == "index" {
+		candidates = append(candidates, filepath.Dir(path))
+	}
 
-		// Check if the newly created file 'path' satisfies 'importPath'
-		// importPath is like /abs/path/to/utils
-		// path is like /abs/path/to/utils.ts
-
-		// Check if path starts with importPath and has a valid extension
-		if strings.HasPrefix(path, importPath) {
-			// Verify extension
-			rest := strings.TrimPrefix(path, importPath)
-			validExt := false
-			for _, ext := range []string{".ts", ".js", ".tsx", ".jsx", "/index.ts", "/index.js", "/index.tsx", "/index.jsx"} {
-				if rest == ext || (rest == "" && ext == "") { // The (rest == "" && ext == "") part is for cases like /utils -> /utils/index.ts
-					validExt = true
-					break
+	for _, candidate := range candidates {
+		if dependents, ok := g.PendingImports[candidate]; ok {
+			// It's a match! Link them.
+			for dep := range dependents {
+				g.addReverseDependency(path, dep)
+				// Add to Forward map of the dependent
+				if g.Forward[dep] == nil {
+					g.Forward[dep] = make(map[string]bool)
 				}
+				g.Forward[dep][path] = true
 			}
-
-			if validExt {
-				// It's a match! Link them.
-				for dep := range dependents {
-					g.addReverseDependency(path, dep)
-					// Add to Forward map of the dependent
-					if g.Forward[dep] == nil {
-						g.Forward[dep] = make(map[string]bool)
-					}
-					g.Forward[dep][path] = true
-				}
-				// Remove from pending
-				delete(g.PendingImports, importPath)
-			}
+			// Remove from pending
+			delete(g.PendingImports, candidate)
 		}
 	}
 }
@@ -181,12 +162,6 @@ func (g *Graph) GetDependents(path string) []string {
 }
 
 // Internal helpers
-
-func (g *Graph) processFile(path string) {
-	// This method is now largely redundant as Update handles the logic,
-	// but kept if needed for internal use, though Update is preferred.
-	// For now, we'll remove it to avoid confusion and duplication since Update covers it.
-}
 
 func (g *Graph) addPendingImport(importPath, dependent string) {
 	if _, ok := g.PendingImports[importPath]; !ok {
