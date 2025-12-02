@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	"syscall"
 )
 
 // Runner manages the execution of test commands.
@@ -51,13 +50,8 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = cwd
-	// Set process group to ensure we can kill children if needed (though Context handles the main one)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Ensure we kill the whole process group when the context is cancelled
-	cmd.Cancel = func() error {
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	prepareCommand(cmd)
 
 	// Force color output
 	cmd.Env = os.Environ()
