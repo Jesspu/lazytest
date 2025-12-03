@@ -39,11 +39,18 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	explorerView.WriteString(tabs + "\n\n")
 
 	// Calculate available height for the tree
-	treeHeight := paneHeight
+	// Calculate available height for the tree
+	headerHeight := lipgloss.Height(tabs + "\n\n")
+	treeHeight := paneHeight - headerHeight
+
 	searchHeight := 0
 	if m.searchMode && m.activeTab == TabExplorer {
 		searchHeight = 3 // 1 line text + 2 lines border
 		treeHeight -= searchHeight
+	}
+
+	if treeHeight < 0 {
+		treeHeight = 0
 	}
 
 	if m.activeTab == TabExplorer {
