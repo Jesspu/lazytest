@@ -24,17 +24,25 @@ var (
 	importSideEffectRegex = regexp.MustCompile(`import\s+['"]([^'"]+)['"]`)
 	// require('...')
 	requireRegex = regexp.MustCompile(`require\s*\(\s*['"]([^'"]+)['"]\s*\)`)
+	// jest.mock('...'), jest.doMock('...'), jest.setMock('...')
+	jestMockRegex = regexp.MustCompile(`jest\.(?:mock|doMock|setMock)\s*\(\s*['"]([^'"]+)['"]`)
 )
 
 // ImportResult contains resolved and unresolved imports.
 type ImportResult struct {
-	Resolved   []string
+	Resolved   []ResolvedImport
 	Unresolved []UnresolvedImport
+}
+
+type ResolvedImport struct {
+	Path   string
+	Mocked bool
 }
 
 type UnresolvedImport struct {
 	Path       string // The raw import string (e.g. "./utils")
 	SourcePath string // The file doing the import
+	Mocked     bool
 }
 
 // ParseImports extracts imported file paths from a given file.
@@ -44,14 +52,20 @@ func (p *Parser) ParseImports(filePath string) (*ImportResult, error) {
 		return nil, err
 	}
 
-	var rawImports []string
+	var seenImports = make(map[string]bool)
+	var mockedImports = make(map[string]bool)
 	text := string(content)
+
+	// Helper to add import
+	addImport := func(path string) {
+		seenImports[path] = true
+	}
 
 	// Check for "import ... from"
 	matches := importFromRegex.FindAllStringSubmatch(text, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			rawImports = append(rawImports, match[1])
+			addImport(match[1])
 		}
 	}
 
@@ -59,7 +73,7 @@ func (p *Parser) ParseImports(filePath string) (*ImportResult, error) {
 	matches = importSideEffectRegex.FindAllStringSubmatch(text, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			rawImports = append(rawImports, match[1])
+			addImport(match[1])
 		}
 	}
 
@@ -67,17 +81,32 @@ func (p *Parser) ParseImports(filePath string) (*ImportResult, error) {
 	matches = requireRegex.FindAllStringSubmatch(text, -1)
 	for _, match := range matches {
 		if len(match) > 1 {
-			rawImports = append(rawImports, match[1])
+			addImport(match[1])
 		}
 	}
 
-	return p.resolvePaths(filePath, rawImports), nil
+	// Check for "jest.mock"
+	matches = jestMockRegex.FindAllStringSubmatch(text, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			path := match[1]
+			mockedImports[path] = true
+			addImport(path)
+		}
+	}
+
+	var rawImports []string
+	for imp := range seenImports {
+		rawImports = append(rawImports, imp)
+	}
+
+	return p.resolvePaths(filePath, rawImports, mockedImports), nil
 }
 
 // resolvePaths converts relative imports to absolute paths.
-func (p *Parser) resolvePaths(sourcePath string, imports []string) *ImportResult {
+func (p *Parser) resolvePaths(sourcePath string, imports []string, mockedImports map[string]bool) *ImportResult {
 	result := &ImportResult{
-		Resolved:   []string{},
+		Resolved:   []ResolvedImport{},
 		Unresolved: []UnresolvedImport{},
 	}
 	dir := filepath.Dir(sourcePath)
@@ -89,16 +118,21 @@ func (p *Parser) resolvePaths(sourcePath string, imports []string) *ImportResult
 		}
 
 		absPath := filepath.Join(dir, imp)
+		isMocked := mockedImports[imp]
 
 		// Try to find the file with extensions
 		if foundPath, ok := p.findFile(absPath); ok {
-			result.Resolved = append(result.Resolved, foundPath)
+			result.Resolved = append(result.Resolved, ResolvedImport{
+				Path:   foundPath,
+				Mocked: isMocked,
+			})
 		} else {
 			// Store as unresolved, but we need the POTENTIAL absolute path (without extension)
 			// to match against later.
 			result.Unresolved = append(result.Unresolved, UnresolvedImport{
 				Path:       absPath, // This is the absolute path prefix (e.g. /path/to/utils)
 				SourcePath: sourcePath,
+				Mocked:     isMocked,
 			})
 		}
 	}

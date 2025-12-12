@@ -8,14 +8,22 @@ import (
 	"github.com/jesspatton/lazytest/filesystem"
 )
 
+// DependencyType represents the type of dependency.
+type DependencyType int
+
+const (
+	DepRegular DependencyType = iota
+	DepMocked
+)
+
 // Graph represents the dependency graph of the project.
 type Graph struct {
-	// Forward: File -> [Dependencies]
-	Forward map[string]map[string]bool
-	// Reverse: File -> [Dependents] (Files that import this file)
-	Reverse map[string]map[string]bool
-	// PendingImports: ImportPath -> [Dependents] (Files that import a path that wasn't found yet)
-	PendingImports map[string]map[string]bool
+	// Forward: File -> [Dependencies] -> Type
+	Forward map[string]map[string]DependencyType
+	// Reverse: File -> [Dependents] -> Type
+	Reverse map[string]map[string]DependencyType
+	// PendingImports: ImportPath -> [Dependents] -> Type
+	PendingImports map[string]map[string]DependencyType
 
 	parser *Parser
 	mu     sync.RWMutex
@@ -24,9 +32,9 @@ type Graph struct {
 // NewGraph creates a new dependency graph.
 func NewGraph() *Graph {
 	return &Graph{
-		Forward:        make(map[string]map[string]bool),
-		Reverse:        make(map[string]map[string]bool),
-		PendingImports: make(map[string]map[string]bool),
+		Forward:        make(map[string]map[string]DependencyType),
+		Reverse:        make(map[string]map[string]DependencyType),
+		PendingImports: make(map[string]map[string]DependencyType),
 		parser:         NewParser(),
 	}
 }
@@ -78,15 +86,23 @@ func (g *Graph) Update(path string) {
 	}
 
 	// Update Forward map
-	g.Forward[path] = make(map[string]bool)
+	g.Forward[path] = make(map[string]DependencyType)
 	for _, imp := range result.Resolved {
-		g.Forward[path][imp] = true
-		g.addReverseDependency(imp, path)
+		depType := DepRegular
+		if imp.Mocked {
+			depType = DepMocked
+		}
+		g.Forward[path][imp.Path] = depType
+		g.addReverseDependency(imp.Path, path, depType)
 	}
 
 	// Add unresolved to PendingImports
 	for _, unresolved := range result.Unresolved {
-		g.addPendingImport(unresolved.Path, path)
+		depType := DepRegular
+		if unresolved.Mocked {
+			depType = DepMocked
+		}
+		g.addPendingImport(unresolved.Path, path, depType)
 	}
 
 	// Check if this new/updated file resolves any pending imports.
@@ -116,13 +132,13 @@ func (g *Graph) Update(path string) {
 	for _, candidate := range candidates {
 		if dependents, ok := g.PendingImports[candidate]; ok {
 			// It's a match! Link them.
-			for dep := range dependents {
-				g.addReverseDependency(path, dep)
+			for dep, depType := range dependents {
+				g.addReverseDependency(path, dep, depType)
 				// Add to Forward map of the dependent
 				if g.Forward[dep] == nil {
-					g.Forward[dep] = make(map[string]bool)
+					g.Forward[dep] = make(map[string]DependencyType)
 				}
-				g.Forward[dep][path] = true
+				g.Forward[dep][path] = depType
 			}
 			// Remove from pending
 			delete(g.PendingImports, candidate)
@@ -161,20 +177,34 @@ func (g *Graph) GetDependents(path string) []string {
 	return dependents
 }
 
-// Internal helpers
+// GetDependencyType returns the type of dependency between dependent and dependency.
+// Returns DepRegular if not found (or default).
+func (g *Graph) GetDependencyType(dependent, dependency string) DependencyType {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 
-func (g *Graph) addPendingImport(importPath, dependent string) {
-	if _, ok := g.PendingImports[importPath]; !ok {
-		g.PendingImports[importPath] = make(map[string]bool)
+	if deps, ok := g.Forward[dependent]; ok {
+		if depType, ok := deps[dependency]; ok {
+			return depType
+		}
 	}
-	g.PendingImports[importPath][dependent] = true
+	return DepRegular
 }
 
-func (g *Graph) addReverseDependency(dependency, dependent string) {
-	if _, ok := g.Reverse[dependency]; !ok {
-		g.Reverse[dependency] = make(map[string]bool)
+// Internal helpers
+
+func (g *Graph) addPendingImport(importPath, dependent string, depType DependencyType) {
+	if _, ok := g.PendingImports[importPath]; !ok {
+		g.PendingImports[importPath] = make(map[string]DependencyType)
 	}
-	g.Reverse[dependency][dependent] = true
+	g.PendingImports[importPath][dependent] = depType
+}
+
+func (g *Graph) addReverseDependency(dependency, dependent string, depType DependencyType) {
+	if _, ok := g.Reverse[dependency]; !ok {
+		g.Reverse[dependency] = make(map[string]DependencyType)
+	}
+	g.Reverse[dependency][dependent] = depType
 }
 
 func (g *Graph) removeReverseDependency(dependency, dependent string) {

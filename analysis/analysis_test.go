@@ -296,10 +296,10 @@ func TestParser_Formats(t *testing.T) {
 	}
 
 	for _, res := range result.Resolved {
-		if _, ok := expected[res]; ok {
-			expected[res] = true
+		if _, ok := expected[res.Path]; ok {
+			expected[res.Path] = true
 		} else {
-			t.Errorf("Unexpected import found: %s", res)
+			t.Errorf("Unexpected import found: %s", res.Path)
 		}
 	}
 

@@ -285,7 +285,11 @@ func (e *Engine) FindRelatedTests(path string) []string {
 	var tests []string
 	for _, dep := range dependents {
 		if filesystem.IsTestFile(dep) {
-			tests = append(tests, dep)
+			// Check if the dependency is mocked
+			depType := e.Graph.GetDependencyType(dep, path)
+			if depType != analysis.DepMocked {
+				tests = append(tests, dep)
+			}
 		}
 	}
 	return tests
