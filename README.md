@@ -81,17 +81,34 @@ It automatically detects the execution root by searching up the directory tree f
 
 ### Custom Configuration
 
-You can override the default test command by creating a `.lazytest.json` file in your project root (where `package.json` is located).
+You can customize the behavior by creating a `.lazytest.json` file in your project root (where `package.json` is located).
+
+**Supported Fields:**
+*   `command`: The default command to run for tests. `<path>` is replaced by the test file path.
+*   `overrides`: specific commands for file patterns (supports glob patterns and `/**` suffix).
+*   `excludes`: directories to completely hide from the explorer.
 
 **Example `.lazytest.json`:**
 
 ```json
 {
-  "command": "npm test --"
+  "command": "npm test --",
+  "excludes": [
+    "e2e",
+    "examples/ignored_folder"
+  ],
+  "overrides": [
+    {
+      "pattern": "packages/backend/**/*.go",
+      "command": "npx jest"
+    },
+    {
+      "pattern": "packages/ui/**",
+      "command": "npm run test:unit --"
+    }
+  ]
 }
 ```
-
-With this configuration, LazyTest will execute: `npm test -- <relative_path_to_file>`.
 
 ## Tech Stack & Architecture
 
