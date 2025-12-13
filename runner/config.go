@@ -10,6 +10,14 @@ import (
 
 // Config holds the configuration for the test runner.
 type Config struct {
+	Command   string     `json:"command"`
+	Overrides []Override `json:"overrides,omitempty"`
+	Excludes  []string   `json:"excludes,omitempty"`
+}
+
+// Override defines a custom command for a specific file pattern.
+type Override struct {
+	Pattern string `json:"pattern"`
 	Command string `json:"command"`
 }
 

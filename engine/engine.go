@@ -27,18 +27,20 @@ type WatcherReadyMsg struct {
 
 // Engine manages the application logic and side effects.
 type Engine struct {
-	State   State
-	runner  *runner.Runner
-	watcher *filesystem.Watcher
-	Graph   *analysis.Graph
+	State         State
+	runner        *runner.Runner
+	watcher       *filesystem.Watcher
+	Graph         *analysis.Graph
+	ProjectConfig runner.Config
 }
 
 // New creates a new Engine instance.
 func New(rootPath string) *Engine {
 	return &Engine{
-		State:  NewState(rootPath),
-		runner: runner.NewRunner(),
-		Graph:  analysis.NewGraph(),
+		State:         NewState(rootPath),
+		runner:        runner.NewRunner(),
+		Graph:         analysis.NewGraph(),
+		ProjectConfig: runner.LoadConfig(rootPath),
 	}
 }
 
@@ -205,7 +207,7 @@ func (e *Engine) ClearWatched() {
 // Internal Commands
 
 func (e *Engine) RefreshTree() tea.Msg {
-	tree, err := filesystem.Walk(e.State.RootPath)
+	tree, err := filesystem.Walk(e.State.RootPath, e.ProjectConfig.Excludes)
 	if err != nil {
 		return nil
 	}

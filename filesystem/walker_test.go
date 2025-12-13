@@ -30,7 +30,7 @@ func TestWalk(t *testing.T) {
 		}
 	}
 
-	rootNode, err := Walk(tmpDir)
+	rootNode, err := Walk(tmpDir, nil)
 	if err != nil {
 		t.Fatalf("Walk failed: %v", err)
 	}
@@ -59,5 +59,66 @@ func TestWalk(t *testing.T) {
 	testCount := countTests(rootNode)
 	if testCount != 2 {
 		t.Errorf("expected 2 test files in tree, got %d", testCount)
+	}
+}
+
+func TestWalk_Excludes(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-walker-excludes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	files := []string{
+		"src/component.test.tsx",
+		"src/ignored/bad.test.ts",
+		"e2e/login.spec.ts",
+	}
+
+	for _, f := range files {
+		path := filepath.Join(tmpDir, f)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("test"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Exclude "src/ignored" and "e2e"
+	excludes := []string{"src/ignored", "e2e"}
+
+	rootNode, err := Walk(tmpDir, excludes)
+	if err != nil {
+		t.Fatalf("Walk failed: %v", err)
+	}
+
+	foundFiles := make(map[string]bool)
+	var collectFiles func(*Node)
+	collectFiles = func(n *Node) {
+		if !n.IsDir {
+			foundFiles[n.Path] = true
+		}
+		for _, child := range n.Children {
+			collectFiles(child)
+		}
+	}
+	collectFiles(rootNode)
+
+	// Check that we only found src/component.test.tsx
+	expected := filepath.Join(tmpDir, "src/component.test.tsx")
+	if !foundFiles[expected] {
+		t.Errorf("Expected to find %s", expected)
+	}
+
+	// Check excluded
+	ignored := filepath.Join(tmpDir, "src/ignored/bad.test.ts")
+	if foundFiles[ignored] {
+		t.Errorf("Should have excluded %s", ignored)
+	}
+
+	e2e := filepath.Join(tmpDir, "e2e/login.spec.ts")
+	if foundFiles[e2e] {
+		t.Errorf("Should have excluded %s", e2e)
 	}
 }

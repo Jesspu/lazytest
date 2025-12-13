@@ -103,6 +103,65 @@ func TestPrepareJob(t *testing.T) {
 		}
 	})
 
+	t.Run("Overrides", func(t *testing.T) {
+		tmpDir, err := os.MkdirTemp("", "lazytest-job-overrides")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		if err := os.WriteFile(filepath.Join(tmpDir, "package.json"), []byte("{}"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		configContent := `{
+			"command": "default <path>",
+			"overrides": [
+				{"pattern": "pkg/**", "command": "pkg-test <path>"},
+				{"pattern": "src/special.test.js", "command": "special <path>"}
+			]
+		}`
+		if err := os.WriteFile(filepath.Join(tmpDir, ".lazytest.json"), []byte(configContent), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		// Test 1: Pattern match (directory)
+		pkgTest := filepath.Join(tmpDir, "pkg", "sub", "foo_test.go")
+		if err := os.MkdirAll(filepath.Dir(pkgTest), 0755); err != nil {
+			t.Fatal(err)
+		}
+		job1, err := PrepareJob(pkgTest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job1.Command != "pkg-test" {
+			t.Errorf("Expected pkg-test command, got %s", job1.Command)
+		}
+
+		// Test 2: Exact match
+		specialTest := filepath.Join(tmpDir, "src", "special.test.js")
+		if err := os.MkdirAll(filepath.Dir(specialTest), 0755); err != nil {
+			t.Fatal(err)
+		}
+		job2, err := PrepareJob(specialTest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job2.Command != "special" {
+			t.Errorf("Expected special command, got %s", job2.Command)
+		}
+
+		// Test 3: Default fallback
+		normalTest := filepath.Join(tmpDir, "src", "normal.test.js")
+		job3, err := PrepareJob(normalTest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job3.Command != "default" {
+			t.Errorf("Expected default command, got %s", job3.Command)
+		}
+	})
+
 	t.Run("No Root", func(t *testing.T) {
 		tmpDir, err := os.MkdirTemp("", "lazytest-job-noroot")
 		if err != nil {

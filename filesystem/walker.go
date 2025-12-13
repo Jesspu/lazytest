@@ -16,7 +16,7 @@ type Node struct {
 }
 
 // Walk traverses the root directory and builds a tree of test files
-func Walk(root string) (*Node, error) {
+func Walk(root string, excludes []string) (*Node, error) {
 	rootNode := &Node{
 		Name:  filepath.Base(root),
 		Path:  root,
@@ -26,12 +26,43 @@ func Walk(root string) (*Node, error) {
 	fileListQueue := StreamFiles(root)
 
 	for f := range fileListQueue {
+		if shouldExclude(f.Location, root, excludes) {
+			continue
+		}
+
 		if IsTestFile(f.Filename) {
 			addPathToTree(rootNode, f.Location, root)
 		}
 	}
 
 	return rootNode, nil
+}
+
+func shouldExclude(path, root string, excludes []string) bool {
+	if len(excludes) == 0 {
+		return false
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+
+	for _, result := range excludes {
+		// Exact match or subdirectory match
+		// If exclude is "foo", matches "foo", "foo/bar"
+		cleanResult := filepath.ToSlash(result)
+		if rel == cleanResult || strings.HasPrefix(rel, cleanResult+"/") {
+			return true
+		}
+
+		// Glob match
+		matched, _ := filepath.Match(cleanResult, rel)
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 // addPathToTree adds a file path to the tree, creating intermediate directory nodes as needed
