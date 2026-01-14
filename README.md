@@ -2,31 +2,35 @@
 
 LazyTest is a terminal user interface (TUI) for running tests in TypeScript and JavaScript projects, heavily inspired by the excellent [lazygit](https://github.com/jesseduffield/lazygit). It provides a fast, keyboard-centric workflow for navigating test files, executing them, and viewing results instantly.
 
+While it defaults to **Jest**, LazyTest is **test-runner agnostic** and can be configured to work with Vitest, Playwright, or any CLI-based test runner.
+
 ![LazyTest Screenshot](media/example.png)
 
 ## Features
 
 *   **Vim-style Navigation**: Navigate your file tree with `j`, `k`, `h`, `l`.
 *   **Instant Feedback**: Real-time output streaming with ANSI color support.
-*   **Smart Test Selection**: Automatically watch and run tests related to changed files using dependency graph analysis.
-*   **File Watching**: Automatically detects new test files. Manually toggle watch mode for specific files.
-*   **Context Awareness**: Automatically finds the nearest `package.json` to run tests in the correct context (great for monorepos).
+*   **Smart Test Selection**: Automatically runs tests related to changed source files using dependency graph analysis. No more running the whole suite for a one-line change.
+*   **File Watching**: Automatically detects new test files and updates the tree in real-time.
+*   **Context Awareness**: Automatically finds the nearest `package.json` to run tests in the correct context (perfect for monorepos).
 *   **Status Indicators**: Visual feedback for running (⏳), passed (✅), and failed (❌) tests.
-*   **Watched Files Tab**: View and manage your list of watched files in a dedicated tab.
+*   **Watched Files Tab**: View and manage your list of manually watched files in a dedicated tab.
 *   **Search**: Quickly find files with `/` and navigate matches with `n`/`N`.
 *   **.gitignore Support**: Automatically respects `.gitignore` patterns and common ignore patterns.
-*   **Customizable**: Configure custom test commands via `.lazytest.json`.
+*   **Customizable**: Configure custom test commands and overrides via `.lazytest.json`.
 
 ## Quick Start
 
 ### Prerequisites
 
-*   [Go](https://go.dev/dl/) (1.21 or later recommended)
-*   A JavaScript/TypeScript project with Jest installed.
+*   **To Build**: [Go](https://go.dev/dl/) (1.21 or later).
+*   **To Run**: Any environment with your preferred test runner (Jest, Vitest, etc.) and `npx` (if using the default command).
 
 ### Installation
 
-Clone the repository and build the binary:
+**Download Binary**: Pre-compiled binaries for macOS, Linux, and Windows are available on the [GitHub Releases](https://github.com/jesspatton/lazytest/releases) page.
+
+**Build from Source**: Alternatively, clone the repository and build it yourself:
 
 ```bash
 git clone https://github.com/jesspatton/lazytest.git
@@ -42,7 +46,7 @@ Navigate to your project directory and run the binary:
 ./lazytest
 ```
 
-(Optional) Move the binary to your PATH to run it from anywhere:
+(Optional) Move the binary to your PATH:
 
 ```bash
 mv lazytest /usr/local/bin/
@@ -56,9 +60,9 @@ mv lazytest /usr/local/bin/
 | `k` / `↑` | Move cursor up |
 | `Enter` | Run the selected test file |
 | `Tab` | Switch between File Explorer and Output panes |
-| `a` | Auto-watch tests related to changed files |
+| `a` | **Add Related**: Run tests related to the selected file (Smart Selection) |
 | `r` | Re-run the last executed test |
-| `R` | Refresh the file tree |
+| `R` | Refresh file tree and clear test states |
 | `/` | Enter Search Mode |
 | `n` | Next Search Match |
 | `N` | Previous Search Match |
@@ -72,39 +76,37 @@ mv lazytest /usr/local/bin/
 
 ## Configuration & Test Runner Support
 
-By default, LazyTest attempts to run tests using:
+By default, LazyTest runs:
 ```bash
-npx jest <relative_path_to_file> --colors
+npx jest <path> --colors
 ```
+The `<path>` placeholder is automatically replaced with the relative path to the test file.
 
-It automatically detects the execution root by searching up the directory tree for a `package.json` file.
+### Custom Configuration (`.lazytest.json`)
 
-### Custom Configuration
-
-You can customize the behavior by creating a `.lazytest.json` file in your project root (where `package.json` is located).
+Create a `.lazytest.json` in your project root to customize behavior.
 
 **Supported Fields:**
-*   `command`: The default command to run for tests. `<path>` is replaced by the test file path.
-*   `overrides`: specific commands for file patterns (supports glob patterns and `/**` suffix).
-*   `excludes`: directories to completely hide from the explorer.
+*   `command`: The global test command. Use `<path>` as a placeholder for the file path.
+*   `overrides`: Specific commands for file patterns (useful for mixed environments or monorepos).
+*   `excludes`: Directories to hide from the explorer.
 
-**Example `.lazytest.json`:**
+**Example: Using Vitest**
+```json
+{
+  "command": "npx vitest run <path>"
+}
+```
 
+**Example: Advanced Configuration**
 ```json
 {
   "command": "npm test --",
-  "excludes": [
-    "e2e",
-    "examples/ignored_folder"
-  ],
+  "excludes": ["e2e", "dist"],
   "overrides": [
     {
-      "pattern": "packages/backend/**/*.go",
-      "command": "npx jest"
-    },
-    {
       "pattern": "packages/ui/**",
-      "command": "npm run test:unit --"
+      "command": "npm run test:ui -- <path>"
     }
   ]
 }
@@ -112,37 +114,19 @@ You can customize the behavior by creating a `.lazytest.json` file in your proje
 
 ## Tech Stack & Architecture
 
-LazyTest is built with Go and uses the [Charm](https://charm.sh/) ecosystem for its TUI components.
+LazyTest is built with Go and uses the [Charm](https://charm.sh/) ecosystem.
 
 *   **Language**: Go (Golang)
-*   **TUI Framework**: [Bubbletea](https://github.com/charmbracelet/bubbletea) (The Elm Architecture for Go)
-*   **Styling**: [Lipgloss](https://github.com/charmbracelet/lipgloss) (CSS-like styling)
-*   **Components**: [Bubbles](https://github.com/charmbracelet/bubbles) (Viewport, etc.)
+*   **TUI Framework**: [Bubbletea](https://github.com/charmbracelet/bubbletea)
+*   **Styling**: [Lipgloss](https://github.com/charmbracelet/lipgloss)
+*   **Components**: [Bubbles](https://github.com/charmbracelet/bubbles)
 *   **File Watching**: [fsnotify](https://github.com/fsnotify/fsnotify)
-*   **File Walking**: [gocodewalker](https://github.com/boyter/gocodewalker) (Fast directory traversal with ignore support)
+*   **File Walking**: [gocodewalker](https://github.com/boyter/gocodewalker)
 
 ### Project Structure
 
-*   `main.go`: Entry point. Initializes the Bubbletea program.
-*   `ui/`: Contains the TUI logic.
-    *   `model.go`: The core application state and update loop.
-    *   `explorer.go`: File explorer view logic.
-    *   `footer.go`: Status bar/footer view logic.
-    *   `help.go`: Help menu view logic.
-    *   `keys.go`: Keybinding definitions.
-    *   `styles.go`: Lipgloss style definitions.
-    *   `utils.go`: Helper functions.
-*   `engine/`: Business logic and state management.
-    *   `engine.go`: Core engine that coordinates test execution and file watching.
-    *   `state.go`: Application state management.
-*   `runner/`: Handles test execution.
-    *   `runner.go`: Manages `exec.Cmd`, process cancellation, and output streaming.
-    *   `config.go`: Handles `package.json` discovery and `.lazytest.json` parsing.
-    *   `job.go`: Encapsulates test job preparation logic.
-*   `analysis/`: Dependency graph analysis.
-    *   `graph.go`: Builds and maintains the dependency graph for smart test selection.
-    *   `parser.go`: Parses import statements from source files.
-*   `filesystem/`: File system operations.
-    *   `walker.go`: Directory walking using gocodewalker to build the test tree.
-    *   `watcher.go`: `fsnotify` implementation for detecting file changes.
-    *   `ignore.go`: Handles `.gitignore` parsing and ignore pattern matching.
+*   `ui/`: TUI logic, models, and styles.
+*   `engine/`: Coordinates execution, state, and watching.
+*   `runner/`: Manages process execution and configuration parsing.
+*   `analysis/`: Dependency graph parsing for Smart Test Selection.
+*   `filesystem/`: High-performance directory walking and `.gitignore` support.
