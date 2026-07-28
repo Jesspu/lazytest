@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -39,7 +40,7 @@ func New(rootPath string) *Engine {
 	return &Engine{
 		State:         NewState(rootPath),
 		runner:        runner.NewRunner(),
-		Graph:         analysis.NewGraph(),
+		Graph:         analysis.NewGraphWithRoot(rootPath),
 		ProjectConfig: runner.LoadConfig(rootPath),
 	}
 }
@@ -64,37 +65,65 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 	case WatcherMsg:
 		path := string(msg)
 
-		// Update dependency graph
-		e.Graph.Update(path)
+		var testsToQueue []string
+
+		if filesystem.IsConfigFile(path) {
+			// 1. Reload runner configuration
+			e.ProjectConfig = runner.LoadConfig(e.State.RootPath)
+
+			// 2. Rebuild graph as paths/aliases might have changed (e.g. tsconfig.json)
+			e.Graph = analysis.NewGraphWithRoot(e.State.RootPath)
+			_ = e.Graph.Build(e.State.RootPath)
+
+			// 3. Queue all watched tests (or all tests in Smart Mode) for re-execution
+			if e.State.SmartMode {
+				for p := range e.Graph.Forward {
+					if filesystem.IsTestFile(p) {
+						testsToQueue = append(testsToQueue, p)
+					}
+				}
+			} else {
+				for watchedPath := range e.State.Watched {
+					testsToQueue = append(testsToQueue, watchedPath)
+				}
+			}
+			sort.Strings(testsToQueue)
+
+			e.State.CurrentOutput += fmt.Sprintf("\nConfig change detected (%s). Reloaded settings and re-queued tests.\n", filepath.Base(path))
+			if e.State.RunningNode != nil {
+				e.State.TestOutputs[e.State.RunningNode.Path] = e.State.CurrentOutput
+			}
+		} else {
+			// Update dependency graph
+			e.Graph.Update(path)
+
+			if e.State.SmartMode {
+				// Smart Mode: automatically queue every test transitively affected by this path
+				testsToQueue = e.FindRelatedTests(path)
+			} else {
+				// Manual Mode: only queue watched tests that are in the affected set
+				dependents := e.Graph.GetAffectedDependents(path)
+				for watchedPath := range e.State.Watched {
+					affected := watchedPath == path
+					if !affected {
+						for _, dep := range dependents {
+							if dep == watchedPath {
+								affected = true
+								break
+							}
+						}
+					}
+					if affected {
+						testsToQueue = append(testsToQueue, watchedPath)
+					}
+				}
+			}
+		}
 
 		// Build a set of already-queued items for O(1) deduplication
 		queuedSet := make(map[string]struct{})
 		for _, q := range e.State.Queue {
 			queuedSet[q] = struct{}{}
-		}
-
-		var testsToQueue []string
-
-		if e.State.SmartMode {
-			// Smart Mode: automatically queue every test transitively affected by this path
-			testsToQueue = e.FindRelatedTests(path)
-		} else {
-			// Manual Mode: only queue watched tests that are in the affected set
-			dependents := e.Graph.GetAffectedDependents(path)
-			for watchedPath := range e.State.Watched {
-				affected := watchedPath == path
-				if !affected {
-					for _, dep := range dependents {
-						if dep == watchedPath {
-							affected = true
-							break
-						}
-					}
-				}
-				if affected {
-					testsToQueue = append(testsToQueue, watchedPath)
-				}
-			}
 		}
 
 		// Enqueue (deduplicated)

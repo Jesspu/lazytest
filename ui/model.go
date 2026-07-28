@@ -402,6 +402,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.flatNodes = flattenNodes(m.engine.GetTree())
 		return m, nil
 
+	case engine.WatcherMsg:
+		m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
+		m.viewport.GotoBottom()
+		return m, tea.Batch(cmds...)
+
 	case runner.OutputUpdate:
 		shouldShow := true
 		if m.activeTab == TabWatched {

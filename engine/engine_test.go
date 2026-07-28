@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -381,5 +382,118 @@ func TestSmartModeToggle(t *testing.T) {
 	e.ToggleSmartMode()
 	if e.IsSmartMode() {
 		t.Error("Expected SmartMode to be false after second toggle")
+	}
+}
+
+func TestConfigChangeHandling(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-config-change")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	configFile := filepath.Join(tmpDir, ".lazytest.json")
+	if err := os.WriteFile(configFile, []byte(`{"command": "jest"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	test1 := filepath.Join(tmpDir, "app.test.js")
+	test2 := filepath.Join(tmpDir, "utils.test.js")
+	if err := os.WriteFile(test1, []byte("test 1"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(test2, []byte("test 2"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(tmpDir)
+	if e.ProjectConfig.Command != "jest" {
+		t.Fatalf("Expected initial command 'jest', got '%s'", e.ProjectConfig.Command)
+	}
+
+	e.ToggleWatch(test1)
+	e.ToggleWatch(test2)
+
+	// Pin a running node so the queue won't be consumed immediately
+	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
+
+	// Modify config on disk
+	if err := os.WriteFile(configFile, []byte(`{"command": "vitest"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger config change event
+	_ = e.Update(WatcherMsg(configFile))
+
+	// Verify config reload
+	if e.ProjectConfig.Command != "vitest" {
+		t.Errorf("Expected reloaded command 'vitest', got '%s'", e.ProjectConfig.Command)
+	}
+
+	// Verify both watched test files are enqueued for re-run
+	if len(e.State.Queue) != 2 {
+		t.Fatalf("Expected queue length 2, got %d: %v", len(e.State.Queue), e.State.Queue)
+	}
+	if e.State.Queue[0] != test1 || e.State.Queue[1] != test2 {
+		t.Errorf("Expected queue [%s, %s], got %v", test1, test2, e.State.Queue)
+	}
+
+	// Verify output message
+	expectedMsg := "Config change detected (.lazytest.json). Reloaded settings and re-queued tests."
+	if !strings.Contains(e.State.CurrentOutput, expectedMsg) {
+		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.CurrentOutput)
+	}
+}
+
+func TestConfigChangeHandling_SmartMode(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-config-smart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	pkgFile := filepath.Join(tmpDir, "package.json")
+	if err := os.WriteFile(pkgFile, []byte(`{"name": "test"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	test1 := filepath.Join(tmpDir, "bar.test.ts")
+	test2 := filepath.Join(tmpDir, "foo.test.ts")
+	if err := os.WriteFile(test1, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(test2, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(tmpDir)
+	e.Graph.Build(tmpDir)
+
+	e.ToggleSmartMode()
+	if !e.IsSmartMode() {
+		t.Fatal("Expected SmartMode to be enabled")
+	}
+
+	// No watched files in Smart Mode
+	if len(e.State.Watched) != 0 {
+		t.Fatalf("Expected 0 watched files, got %d", len(e.State.Watched))
+	}
+
+	// Pin a running node
+	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
+
+	_ = e.Update(WatcherMsg(pkgFile))
+
+	// Verify both test files discovered in the graph are enqueued
+	if len(e.State.Queue) != 2 {
+		t.Fatalf("Expected queue length 2 in Smart Mode on config change, got %d: %v", len(e.State.Queue), e.State.Queue)
+	}
+	if e.State.Queue[0] != test1 || e.State.Queue[1] != test2 {
+		t.Errorf("Expected queue [%s, %s], got %v", test1, test2, e.State.Queue)
+	}
+
+	expectedMsg := "Config change detected (package.json). Reloaded settings and re-queued tests."
+	if !strings.Contains(e.State.CurrentOutput, expectedMsg) {
+		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.CurrentOutput)
 	}
 }

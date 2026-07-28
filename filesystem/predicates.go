@@ -33,6 +33,7 @@ func IsConfigFile(name string) bool {
 	base := filepath.Base(name)
 	return base == "package.json" ||
 		base == "tsconfig.json" ||
+		base == ".lazytest.json" ||
 		strings.HasPrefix(base, "vite.config.") ||
 		strings.HasPrefix(base, "jest.config.") ||
 		strings.HasPrefix(base, "babel.config.") ||

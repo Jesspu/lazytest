@@ -48,3 +48,27 @@ func TestIsSourceFile(t *testing.T) {
 		})
 	}
 }
+
+func TestIsConfigFile(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		want     bool
+	}{
+		{"package json", "package.json", true},
+		{"tsconfig json", "tsconfig.json", true},
+		{"lazytest json", ".lazytest.json", true},
+		{"jest config js", "jest.config.js", true},
+		{"vite config ts", "vite.config.ts", true},
+		{"source file", "foo.ts", false},
+		{"readme", "README.md", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsConfigFile(tt.filename); got != tt.want {
+				t.Errorf("IsConfigFile(%q) = %v, want %v", tt.filename, got, tt.want)
+			}
+		})
+	}
+}
