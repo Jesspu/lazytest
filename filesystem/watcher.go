@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -12,10 +13,12 @@ import (
 
 // Watcher monitors the file system for changes.
 type Watcher struct {
-	fsWatcher *fsnotify.Watcher
-	Events    chan string // Signal to refresh the tree, carries the changed file path
-	done      chan struct{}
-	root      string
+	fsWatcher    *fsnotify.Watcher
+	Events       chan string // Signal to refresh the tree, carries the changed file path
+	done         chan struct{}
+	root         string
+	mu           sync.Mutex
+	pendingPaths map[string]struct{}
 }
 
 // NewWatcher creates a new Watcher for the given root directory.
@@ -26,10 +29,11 @@ func NewWatcher(root string) (*Watcher, error) {
 	}
 
 	w := &Watcher{
-		fsWatcher: fsWatcher,
-		Events:    make(chan string, 10), // Buffered to prevent blocking
-		done:      make(chan struct{}),
-		root:      root,
+		fsWatcher:    fsWatcher,
+		Events:       make(chan string, 100), // Increased buffer to handle batch events
+		done:         make(chan struct{}),
+		root:         root,
+		pendingPaths: make(map[string]struct{}),
 	}
 
 	// Use gocodewalker to find all relevant directories to watch
@@ -102,12 +106,30 @@ func (w *Watcher) startLoop() {
 				continue
 			}
 
-			// Debounce logic
+			// Accumulate the path into the pending set before resetting the timer.
+			// This ensures no path is dropped when multiple files change within the
+			// debounce window (e.g. git checkout, IDE bulk-save).
+			w.mu.Lock()
+			w.pendingPaths[event.Name] = struct{}{}
+			w.mu.Unlock()
+
+			// Reset the debounce timer. When it fires, all accumulated paths are
+			// flushed to w.Events in one pass.
 			if timer != nil {
 				timer.Stop()
 			}
 			timer = time.AfterFunc(debounceDuration, func() {
-				w.Events <- event.Name
+				w.mu.Lock()
+				pathsToEmit := make([]string, 0, len(w.pendingPaths))
+				for path := range w.pendingPaths {
+					pathsToEmit = append(pathsToEmit, path)
+				}
+				w.pendingPaths = make(map[string]struct{}) // Reset for next batch
+				w.mu.Unlock()
+
+				for _, path := range pathsToEmit {
+					w.Events <- path
+				}
 			})
 
 		case err, ok := <-w.fsWatcher.Errors:

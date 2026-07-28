@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -78,3 +79,56 @@ func TestWatcherAllowlist(t *testing.T) {
 		}
 	}
 }
+
+// TestWatcher_BatchDebounce verifies that all file paths modified within a single
+// debounce window are emitted — none are silently dropped.
+func TestWatcher_BatchDebounce(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-watcher-batch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	w, err := NewWatcher(tmpDir)
+	if err != nil {
+		t.Fatalf("NewWatcher failed: %v", err)
+	}
+	defer w.Close()
+
+	// Give the watcher time to initialise its fsnotify watch.
+	time.Sleep(100 * time.Millisecond)
+
+	// Write 5 distinct source files in rapid succession (<10ms total).
+	const numFiles = 5
+	filePaths := make([]string, numFiles)
+	for i := 0; i < numFiles; i++ {
+		p := filepath.Join(tmpDir, fmt.Sprintf("file%d.ts", i))
+		filePaths[i] = p
+		if err := os.WriteFile(p, []byte("export {}"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Collect all events that arrive within a generous timeout window.
+	// The debounce is 100ms, so all 5 events should arrive together shortly after.
+	received := make(map[string]bool)
+	deadline := time.After(2 * time.Second)
+
+collect:
+	for len(received) < numFiles {
+		select {
+		case path := <-w.Events:
+			received[path] = true
+		case <-deadline:
+			break collect
+		}
+	}
+
+	// Verify every file was received.
+	for _, p := range filePaths {
+		if !received[p] {
+			t.Errorf("Event not received for %s (got %d/%d events: %v)", p, len(received), numFiles, received)
+		}
+	}
+}
+
