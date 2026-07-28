@@ -218,3 +218,102 @@ func TestSmartQueueing(t *testing.T) {
 		t.Errorf("Expected queue to be empty for unrelated file change, got %d items: %v", len(e.State.Queue), e.State.Queue)
 	}
 }
+
+// TestFindRelatedTests_SelfInclusion verifies that FindRelatedTests returns the
+// path itself when it is already a test file.
+func TestFindRelatedTests_SelfInclusion(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-related-self")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	testFile := filepath.Join(tmpDir, "foo.test.ts")
+	if err := os.WriteFile(testFile, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(tmpDir)
+	e.Graph.Build(tmpDir)
+
+	related := e.FindRelatedTests(testFile)
+
+	if len(related) != 1 || related[0] != testFile {
+		t.Errorf("FindRelatedTests(%q) = %v, want [%q]", testFile, related, testFile)
+	}
+}
+
+// TestFindRelatedTests_SourceFile verifies that FindRelatedTests returns the
+// dependent test file when the changed path is a source (non-test) file.
+func TestFindRelatedTests_SourceFile(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-related-source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	sourceFile := filepath.Join(tmpDir, "foo.ts")
+	testFile := filepath.Join(tmpDir, "foo.test.ts")
+
+	if err := os.WriteFile(sourceFile, []byte("export const x = 1;"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(testFile, []byte("import { x } from './foo';"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(tmpDir)
+	e.Graph.Build(tmpDir)
+
+	related := e.FindRelatedTests(sourceFile)
+
+	if len(related) != 1 || related[0] != testFile {
+		t.Errorf("FindRelatedTests(%q) = %v, want [%q]", sourceFile, related, testFile)
+	}
+}
+
+// TestFindRelatedTests_NoDuplicates verifies that when a test file is both the
+// queried path and imported by another test file, both are returned without duplicates.
+func TestFindRelatedTests_NoDuplicates(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-related-dedup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// foo.test.ts is the changed file (a test file itself).
+	// bar.test.ts imports foo.test.ts.
+	fooTest := filepath.Join(tmpDir, "foo.test.ts")
+	barTest := filepath.Join(tmpDir, "bar.test.ts")
+
+	if err := os.WriteFile(fooTest, []byte("export const helper = () => {};"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(barTest, []byte("import { helper } from './foo.test';"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(tmpDir)
+	e.Graph.Build(tmpDir)
+
+	related := e.FindRelatedTests(fooTest)
+
+	// Expect exactly 2 unique entries: fooTest (self) + barTest (transitive).
+	seen := make(map[string]bool)
+	for _, r := range related {
+		if seen[r] {
+			t.Errorf("FindRelatedTests returned duplicate entry: %s", r)
+		}
+		seen[r] = true
+	}
+
+	if !seen[fooTest] {
+		t.Errorf("FindRelatedTests missing self-inclusion of %s; got %v", fooTest, related)
+	}
+	if !seen[barTest] {
+		t.Errorf("FindRelatedTests missing transitive dependent %s; got %v", barTest, related)
+	}
+	if len(related) != 2 {
+		t.Errorf("FindRelatedTests returned %d results, want 2: %v", len(related), related)
+	}
+}

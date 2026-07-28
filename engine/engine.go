@@ -283,17 +283,27 @@ func (e *Engine) IsWatched(path string) bool {
 }
 
 func (e *Engine) FindRelatedTests(path string) []string {
-	dependents := e.Graph.GetDependents(path)
 	var tests []string
+	seen := make(map[string]bool)
+
+	// 1. Direct inclusion: if the changed path is itself a test file, include it first.
+	if filesystem.IsTestFile(path) {
+		tests = append(tests, path)
+		seen[path] = true
+	}
+
+	// 2. Query transitive dependents and include any unseen test files.
+	dependents := e.Graph.GetDependents(path)
 	for _, dep := range dependents {
-		if filesystem.IsTestFile(dep) {
-			// Check if the dependency is mocked
+		if !seen[dep] && filesystem.IsTestFile(dep) {
 			depType := e.Graph.GetDependencyType(dep, path)
 			if depType != analysis.DepMocked {
 				tests = append(tests, dep)
+				seen[dep] = true
 			}
 		}
 	}
+
 	return tests
 }
 
