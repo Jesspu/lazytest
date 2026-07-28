@@ -26,16 +26,25 @@ type Graph struct {
 	PendingImports map[string]map[string]DependencyType
 
 	parser *Parser
+	root   string
 	mu     sync.RWMutex
 }
 
-// NewGraph creates a new dependency graph.
+// NewGraph creates a new dependency graph without TS alias resolution.
+// Use NewGraphWithRoot to enable tsconfig.json path alias resolution.
 func NewGraph() *Graph {
+	return NewGraphWithRoot("")
+}
+
+// NewGraphWithRoot creates a Graph that resolves TypeScript path aliases by
+// reading tsconfig.json at root.
+func NewGraphWithRoot(root string) *Graph {
 	return &Graph{
 		Forward:        make(map[string]map[string]DependencyType),
 		Reverse:        make(map[string]map[string]DependencyType),
 		PendingImports: make(map[string]map[string]DependencyType),
-		parser:         NewParser(),
+		parser:         NewParserWithRoot(root),
+		root:           root,
 	}
 }
 

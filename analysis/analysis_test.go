@@ -342,3 +342,228 @@ import {
 		t.Error("Failed to parse multi-line import")
 	}
 }
+
+// TestParser_DynamicImport verifies that dynamic import() expressions are captured.
+func TestParser_DynamicImport(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest_dynamic_import")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create target file so the import resolves.
+	if err := os.WriteFile(filepath.Join(tmpDir, "utils.ts"), []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	content := `
+const mod = await import('./utils');
+const lazy = import('./utils'); // without await
+`
+	filePath := filepath.Join(tmpDir, "test.ts")
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := NewParser()
+	result, err := p.ParseImports(filePath)
+	if err != nil {
+		t.Fatalf("ParseImports failed: %v", err)
+	}
+
+	utilsPath := filepath.Join(tmpDir, "utils.ts")
+	found := false
+	for _, r := range result.Resolved {
+		if r.Path == utilsPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Dynamic import of utils.ts not resolved; resolved=%v unresolved=%v", result.Resolved, result.Unresolved)
+	}
+}
+
+// TestParser_ReExports verifies that re-export statements are captured.
+func TestParser_ReExports(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest_reexport")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create target files.
+	for _, name := range []string{"helper.ts", "types.ts"} {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(""), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	content := `
+export { foo } from './helper';
+export * from './types';
+`
+	filePath := filepath.Join(tmpDir, "index.ts")
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := NewParser()
+	result, err := p.ParseImports(filePath)
+	if err != nil {
+		t.Fatalf("ParseImports failed: %v", err)
+	}
+
+	expected := map[string]bool{
+		filepath.Join(tmpDir, "helper.ts"): false,
+		filepath.Join(tmpDir, "types.ts"):  false,
+	}
+
+	for _, r := range result.Resolved {
+		if _, ok := expected[r.Path]; ok {
+			expected[r.Path] = true
+		}
+	}
+
+	for path, found := range expected {
+		if !found {
+			t.Errorf("Re-export target not resolved: %s (resolved=%v)", path, result.Resolved)
+		}
+	}
+}
+
+// TestResolveAlias_Unit tests the ResolveAlias helper in isolation.
+func TestResolveAlias_Unit(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest_alias_unit")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Write a tsconfig.json with @/* -> ./src/*
+	tsconfig := `{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "~/*": ["./src/*"],
+      "@utils": ["./src/utils"]
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(tmpDir, "tsconfig.json"), []byte(tsconfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Invalidate cache so we pick up the temp tsconfig.
+	InvalidateTSConfigCache(tmpDir)
+
+	tests := []struct {
+		importPath string
+		wantSuffix string // suffix of expected absolute path
+		wantOK     bool
+	}{
+		{"@/services/api", "src/services/api", true},
+		{"~/components/button", "src/components/button", true},
+		{"@utils", "src/utils", true},
+		{"react", "", false},
+		{"./relative", "", false},
+	}
+
+	for _, tc := range tests {
+		got, ok := ResolveAlias(tc.importPath, tmpDir)
+		if ok != tc.wantOK {
+			t.Errorf("ResolveAlias(%q) ok=%v, want %v", tc.importPath, ok, tc.wantOK)
+			continue
+		}
+		if tc.wantOK && !filepath.IsAbs(got) {
+			t.Errorf("ResolveAlias(%q) returned non-absolute path: %q", tc.importPath, got)
+		}
+		if tc.wantSuffix != "" {
+			if !hasSuffixPath(got, tc.wantSuffix) {
+				t.Errorf("ResolveAlias(%q) = %q, want suffix %q", tc.importPath, got, tc.wantSuffix)
+			}
+		}
+	}
+}
+
+// hasSuffixPath checks that path ends with the given suffix (OS-agnostic).
+func hasSuffixPath(path, suffix string) bool {
+	// Normalise separators.
+	path = filepath.ToSlash(path)
+	suffix = filepath.ToSlash(suffix)
+	return len(path) >= len(suffix) &&
+		(path == suffix || path[len(path)-len(suffix)-1] == '/' && path[len(path)-len(suffix):] == suffix)
+}
+
+// TestGraph_TSAlias is an integration test: graph correctly links a test file
+// importing via @/... alias to its target source file.
+func TestGraph_TSAlias(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest_alias_graph")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create directory structure:
+	// src/utils.ts
+	// src/api.ts      -> imports @/utils
+	// tests/api.test.ts -> imports @/api
+	srcDir := filepath.Join(tmpDir, "src")
+	testDir := filepath.Join(tmpDir, "tests")
+	for _, d := range []string{srcDir, testDir} {
+		if err := os.MkdirAll(d, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	files := map[string]string{
+		"src/utils.ts":       "export const util = 1;",
+		"src/api.ts":         "import { util } from '@/utils';",
+		"tests/api.test.ts":  "import { api } from '@/api';",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// tsconfig.json at project root.
+	tsconfig := `{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(tmpDir, "tsconfig.json"), []byte(tsconfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	InvalidateTSConfigCache(tmpDir)
+
+	g := NewGraphWithRoot(tmpDir)
+	if err := g.Build(tmpDir); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	utilsPath := filepath.Join(tmpDir, "src/utils.ts")
+	dependents := g.GetDependents(utilsPath)
+
+	// Expect src/api.ts and transitively tests/api.test.ts
+	depSet := make(map[string]bool)
+	for _, d := range dependents {
+		depSet[d] = true
+	}
+
+	apiPath := filepath.Join(tmpDir, "src/api.ts")
+	testPath := filepath.Join(tmpDir, "tests/api.test.ts")
+
+	if !depSet[apiPath] {
+		t.Errorf("Expected src/api.ts to depend on src/utils.ts; got dependents=%v", dependents)
+	}
+	if !depSet[testPath] {
+		t.Errorf("Expected tests/api.test.ts to transitively depend on src/utils.ts; got dependents=%v", dependents)
+	}
+}

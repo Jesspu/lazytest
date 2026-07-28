@@ -8,11 +8,21 @@ import (
 )
 
 // Parser handles parsing of source files to extract dependencies.
-type Parser struct{}
+type Parser struct {
+	// root is the project root used for locating tsconfig.json.
+	// Empty string means alias resolution is skipped.
+	root string
+}
 
-// NewParser creates a new Parser.
+// NewParser creates a new Parser without a project root (alias resolution disabled).
 func NewParser() *Parser {
 	return &Parser{}
+}
+
+// NewParserWithRoot creates a Parser that can resolve TypeScript path aliases
+// by reading tsconfig.json relative to root.
+func NewParserWithRoot(root string) *Parser {
+	return &Parser{root: root}
 }
 
 // Import regex patterns
@@ -26,6 +36,10 @@ var (
 	requireRegex = regexp.MustCompile(`require\s*\(\s*['"]([^'"]+)['"]\s*\)`)
 	// jest.mock('...'), jest.doMock('...'), jest.setMock('...')
 	jestMockRegex = regexp.MustCompile(`jest\.(?:mock|doMock|setMock)\s*\(\s*['"]([^'"]+)['"]`)
+	// dynamic import: import('...')
+	dynamicImportRegex = regexp.MustCompile(`import\s*\(\s*['"]([^'"]+)['"]\s*\)`)
+	// re-export: export { ... } from '...' or export * from '...'
+	exportFromRegex = regexp.MustCompile(`export[\s\S]*?from\s+['"]([^'"]+)['"]`)
 )
 
 // ImportResult contains resolved and unresolved imports.
@@ -95,6 +109,22 @@ func (p *Parser) ParseImports(filePath string) (*ImportResult, error) {
 		}
 	}
 
+	// Check for dynamic imports: import('...')
+	matches = dynamicImportRegex.FindAllStringSubmatch(text, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			addImport(match[1])
+		}
+	}
+
+	// Check for re-exports: export { ... } from '...' and export * from '...'
+	matches = exportFromRegex.FindAllStringSubmatch(text, -1)
+	for _, match := range matches {
+		if len(match) > 1 {
+			addImport(match[1])
+		}
+	}
+
 	var rawImports []string
 	for imp := range seenImports {
 		rawImports = append(rawImports, imp)
@@ -103,7 +133,7 @@ func (p *Parser) ParseImports(filePath string) (*ImportResult, error) {
 	return p.resolvePaths(filePath, rawImports, mockedImports), nil
 }
 
-// resolvePaths converts relative imports to absolute paths.
+// resolvePaths converts relative imports and TS path aliases to absolute paths.
 func (p *Parser) resolvePaths(sourcePath string, imports []string, mockedImports map[string]bool) *ImportResult {
 	result := &ImportResult{
 		Resolved:   []ResolvedImport{},
@@ -112,13 +142,22 @@ func (p *Parser) resolvePaths(sourcePath string, imports []string, mockedImports
 	dir := filepath.Dir(sourcePath)
 
 	for _, imp := range imports {
-		// Skip non-relative imports (node_modules) for now
-		if !strings.HasPrefix(imp, ".") {
-			continue
-		}
-
-		absPath := filepath.Join(dir, imp)
+		var absPath string
 		isMocked := mockedImports[imp]
+
+		if strings.HasPrefix(imp, ".") {
+			// Relative import
+			absPath = filepath.Join(dir, imp)
+		} else if p.root != "" {
+			// Try TS path alias resolution
+			if resolved, ok := ResolveAlias(imp, p.root); ok {
+				absPath = resolved
+			} else {
+				continue // node_modules or unresolvable
+			}
+		} else {
+			continue // node_modules or unresolvable
+		}
 
 		// Try to find the file with extensions
 		if foundPath, ok := p.findFile(absPath); ok {
