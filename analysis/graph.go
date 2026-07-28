@@ -186,6 +186,54 @@ func (g *Graph) GetDependents(path string) []string {
 	return dependents
 }
 
+// GetAffectedDependents returns files that transitively depend on path, but stops
+// BFS propagation along any edge where the dependent mocks the dependency
+// (i.e. depType == DepMocked). This prevents false-positive test queuing:
+// if a test mocks an intermediate module, changes to that module's dependencies
+// should not cause the test to re-run.
+//
+// Example: leaf.ts → middle.ts → mocked.test.ts (jest.mock('./middle'))
+//
+//	GetAffectedDependents("leaf.ts") returns [middle.ts] only.
+//	mocked.test.ts is excluded because it mocks middle.ts, insulating itself
+//	from changes in leaf.ts.
+func (g *Graph) GetAffectedDependents(path string) []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	visited := make(map[string]bool)
+	var dependents []string
+
+	queue := []string{path}
+	visited[path] = true
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		if deps, ok := g.Reverse[current]; ok {
+			for dep, depType := range deps {
+				if !visited[dep] {
+					visited[dep] = true
+
+					if depType == DepMocked {
+						// The dependent mocks 'current': it is insulated from upstream
+						// changes. Exclude it from results and stop traversal here.
+						continue
+					}
+
+					dependents = append(dependents, dep)
+					queue = append(queue, dep)
+				}
+			}
+		}
+	}
+
+	return dependents
+}
+
+
+
 // GetDependencyType returns the type of dependency between dependent and dependency.
 // Returns DepRegular if not found (or default).
 func (g *Graph) GetDependencyType(dependent, dependency string) DependencyType {

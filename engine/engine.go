@@ -74,8 +74,8 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 			queuedSet[q] = struct{}{}
 		}
 
-		// Find all files affected by this change (transitive dependents)
-		dependents := e.Graph.GetDependents(path)
+		// Find all files affected by this change (transitive dependents), respecting mock boundaries
+		dependents := e.Graph.GetAffectedDependents(path)
 
 		// Queue watched tests that are in the affected set
 		for watchedPath := range e.State.Watched {
@@ -292,15 +292,14 @@ func (e *Engine) FindRelatedTests(path string) []string {
 		seen[path] = true
 	}
 
-	// 2. Query transitive dependents and include any unseen test files.
-	dependents := e.Graph.GetDependents(path)
+	// 2. Query transitive dependents with mock-aware BFS.
+	// GetAffectedDependents already prunes branches where the dependent mocks
+	// the intermediate module, so no additional depType check is needed here.
+	dependents := e.Graph.GetAffectedDependents(path)
 	for _, dep := range dependents {
 		if !seen[dep] && filesystem.IsTestFile(dep) {
-			depType := e.Graph.GetDependencyType(dep, path)
-			if depType != analysis.DepMocked {
-				tests = append(tests, dep)
-				seen[dep] = true
-			}
+			tests = append(tests, dep)
+			seen[dep] = true
 		}
 	}
 

@@ -567,3 +567,122 @@ func TestGraph_TSAlias(t *testing.T) {
 		t.Errorf("Expected tests/api.test.ts to transitively depend on src/utils.ts; got dependents=%v", dependents)
 	}
 }
+
+// TestGetAffectedDependents_MockBoundary is the primary verification test for
+// mock-aware BFS traversal. It sets up:
+//
+//	leaf.ts → middle.ts → unmocked.test.ts  (regular import)
+//	                    → mocked.test.ts    (regular import + jest.mock('./middle'))
+//
+// GetAffectedDependents("leaf.ts") should return middle.ts and unmocked.test.ts
+// but NOT mocked.test.ts, because mocked.test.ts has mocked middle.ts away,
+// insulating itself from changes in leaf.ts.
+func TestGetAffectedDependents_MockBoundary(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest_affected_deps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	files := map[string]string{
+		"leaf.ts":          "export const value = 1;",
+		"middle.ts":        "import { value } from './leaf';",
+		"unmocked.test.ts": "import { value } from './middle';",
+		"mocked.test.ts": `
+import { value } from './middle';
+jest.mock('./middle');
+`,
+	}
+
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	g := NewGraph()
+	if err := g.Build(tmpDir); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	leafPath := filepath.Join(tmpDir, "leaf.ts")
+	middlePath := filepath.Join(tmpDir, "middle.ts")
+	unmockedPath := filepath.Join(tmpDir, "unmocked.test.ts")
+	mockedPath := filepath.Join(tmpDir, "mocked.test.ts")
+
+	affected := g.GetAffectedDependents(leafPath)
+
+	affectedSet := make(map[string]bool)
+	for _, p := range affected {
+		affectedSet[p] = true
+	}
+
+	// middle.ts directly imports leaf.ts and is not mocked — must be included.
+	if !affectedSet[middlePath] {
+		t.Errorf("Expected middle.ts to be in affected dependents of leaf.ts; got %v", affected)
+	}
+
+	// unmocked.test.ts imports middle.ts without mocking — must be included.
+	if !affectedSet[unmockedPath] {
+		t.Errorf("Expected unmocked.test.ts to be in affected dependents of leaf.ts; got %v", affected)
+	}
+
+	// mocked.test.ts mocks middle.ts, so changes in leaf.ts should NOT reach it.
+	if affectedSet[mockedPath] {
+		t.Errorf("Expected mocked.test.ts NOT to be in affected dependents of leaf.ts (mock boundary); got %v", affected)
+	}
+}
+
+// TestGetAffectedDependents_NonMockedBehavesLikeGetDependents confirms that
+// when no mocks are present, GetAffectedDependents returns the same set as
+// GetDependents (regression guard).
+func TestGetAffectedDependents_NonMockedBehavesLikeGetDependents(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest_affected_regression")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	files := map[string]string{
+		"a.ts":      "export const a = 1;",
+		"b.ts":      "import { a } from './a';",
+		"c.test.ts": "import { a } from './b';",
+	}
+
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	g := NewGraph()
+	if err := g.Build(tmpDir); err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	aPath := filepath.Join(tmpDir, "a.ts")
+
+	plain := g.GetDependents(aPath)
+	affected := g.GetAffectedDependents(aPath)
+
+	plainSet := make(map[string]bool)
+	for _, p := range plain {
+		plainSet[p] = true
+	}
+	affectedSet := make(map[string]bool)
+	for _, p := range affected {
+		affectedSet[p] = true
+	}
+
+	for p := range plainSet {
+		if !affectedSet[p] {
+			t.Errorf("GetAffectedDependents missing %s which GetDependents found (no mocks in graph)", p)
+		}
+	}
+	for p := range affectedSet {
+		if !plainSet[p] {
+			t.Errorf("GetAffectedDependents returned %s which GetDependents did not find (no mocks in graph)", p)
+		}
+	}
+}
+
