@@ -317,3 +317,69 @@ func TestFindRelatedTests_NoDuplicates(t *testing.T) {
 		t.Errorf("FindRelatedTests returned %d results, want 2: %v", len(related), related)
 	}
 }
+
+// TestSmartMode verifies that when SmartMode is enabled, a WatcherMsg for a
+// source file automatically enqueues its dependent test file without requiring
+// it to be manually watched.
+func TestSmartMode(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-smartmode")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create source and test files with an import relationship
+	sourceFile := filepath.Join(tmpDir, "utils.ts")
+	testFile := filepath.Join(tmpDir, "utils.test.ts")
+
+	if err := os.WriteFile(sourceFile, []byte("export const add = (a: number, b: number) => a + b;"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(testFile, []byte("import { add } from './utils';"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(tmpDir)
+	// Build the dependency graph so the relationship is known
+	e.Graph.Build(tmpDir)
+
+	// Enable Smart Mode — testFile is NOT manually watched
+	e.ToggleSmartMode()
+	if !e.IsSmartMode() {
+		t.Fatal("Expected SmartMode to be true")
+	}
+
+	// Pin a running node so the queue won't be consumed immediately
+	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
+
+	// Simulate a file-change event on the source file
+	_ = e.Update(WatcherMsg(sourceFile))
+
+	// The test file should have been auto-queued even though it was never watched
+	if len(e.State.Queue) != 1 {
+		t.Fatalf("Expected queue length 1 in Smart Mode, got %d: %v", len(e.State.Queue), e.State.Queue)
+	}
+	if e.State.Queue[0] != testFile {
+		t.Errorf("Expected %s in queue, got %s", testFile, e.State.Queue[0])
+	}
+}
+
+// TestSmartModeToggle verifies that ToggleSmartMode flips the flag and
+// IsSmartMode reflects the current state correctly.
+func TestSmartModeToggle(t *testing.T) {
+	e := New("/tmp")
+
+	if e.IsSmartMode() {
+		t.Error("Expected SmartMode to start as false")
+	}
+
+	e.ToggleSmartMode()
+	if !e.IsSmartMode() {
+		t.Error("Expected SmartMode to be true after first toggle")
+	}
+
+	e.ToggleSmartMode()
+	if e.IsSmartMode() {
+		t.Error("Expected SmartMode to be false after second toggle")
+	}
+}

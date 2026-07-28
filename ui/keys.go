@@ -20,11 +20,12 @@ type KeyMap struct {
 	ExitSearch key.Binding
 
 	// Tab Keys
-	NextTab      key.Binding
-	PrevTab      key.Binding
-	ToggleWatch  key.Binding
-	ClearWatched key.Binding
-	AddRelated   key.Binding
+	NextTab         key.Binding
+	PrevTab         key.Binding
+	ToggleWatch     key.Binding
+	ClearWatched    key.Binding
+	AddRelated      key.Binding
+	ToggleSmartMode key.Binding
 }
 
 // NewKeyMap returns a set of default keybindings.
@@ -98,6 +99,10 @@ func NewKeyMap() KeyMap {
 			key.WithKeys("a"),
 			key.WithHelp("a", "add related"),
 		),
+		ToggleSmartMode: key.NewBinding(
+			key.WithKeys("s"),
+			key.WithHelp("s", "toggle smart mode"),
+		),
 	}
 }
 
@@ -111,6 +116,6 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Enter, k.Tab},
 		{k.PrevTab, k.NextTab, k.ToggleWatch, k.ClearWatched, k.AddRelated},
-		{k.ReRunLast, k.Refresh, k.Help, k.Quit},
+		{k.ReRunLast, k.Refresh, k.ToggleSmartMode, k.Help, k.Quit},
 	}
 }

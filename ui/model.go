@@ -179,6 +179,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.activeTab == TabWatched {
 					m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No watched files.\nPress 'w' on a file to watch it."))
 				}
+			case key.Matches(msg, m.keys.ToggleSmartMode):
+				m.engine.ToggleSmartMode()
 			}
 		}
 

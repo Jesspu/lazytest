@@ -67,39 +67,41 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 		// Update dependency graph
 		e.Graph.Update(path)
 
-		// Smart queueing: Only queue watched tests that are affected by this change
-		// Build a set of queued items for O(1) lookup
+		// Build a set of already-queued items for O(1) deduplication
 		queuedSet := make(map[string]struct{})
 		for _, q := range e.State.Queue {
 			queuedSet[q] = struct{}{}
 		}
 
-		// Find all files affected by this change (transitive dependents), respecting mock boundaries
-		dependents := e.Graph.GetAffectedDependents(path)
+		var testsToQueue []string
 
-		// Queue watched tests that are in the affected set
-		for watchedPath := range e.State.Watched {
-			// Check if this watched file is affected
-			affected := false
-			if watchedPath == path {
-				// The watched file itself was changed
-				affected = true
-			} else {
-				// Check if it's in the dependents list
-				for _, dep := range dependents {
-					if dep == watchedPath {
-						affected = true
-						break
+		if e.State.SmartMode {
+			// Smart Mode: automatically queue every test transitively affected by this path
+			testsToQueue = e.FindRelatedTests(path)
+		} else {
+			// Manual Mode: only queue watched tests that are in the affected set
+			dependents := e.Graph.GetAffectedDependents(path)
+			for watchedPath := range e.State.Watched {
+				affected := watchedPath == path
+				if !affected {
+					for _, dep := range dependents {
+						if dep == watchedPath {
+							affected = true
+							break
+						}
 					}
 				}
-			}
-
-			// Only queue if affected and not already queued
-			if affected {
-				if _, alreadyQueued := queuedSet[watchedPath]; !alreadyQueued {
-					e.State.Queue = append(e.State.Queue, watchedPath)
-					queuedSet[watchedPath] = struct{}{}
+				if affected {
+					testsToQueue = append(testsToQueue, watchedPath)
 				}
+			}
+		}
+
+		// Enqueue (deduplicated)
+		for _, testPath := range testsToQueue {
+			if _, alreadyQueued := queuedSet[testPath]; !alreadyQueued {
+				e.State.Queue = append(e.State.Queue, testPath)
+				queuedSet[testPath] = struct{}{}
 			}
 		}
 
@@ -202,6 +204,16 @@ func (e *Engine) ToggleWatch(path string) {
 
 func (e *Engine) ClearWatched() {
 	e.State.Watched = make(map[string]struct{})
+}
+
+// ToggleSmartMode switches between Smart Mode and Manual Watch Mode.
+func (e *Engine) ToggleSmartMode() {
+	e.State.SmartMode = !e.State.SmartMode
+}
+
+// IsSmartMode returns whether Smart Mode is currently active.
+func (e *Engine) IsSmartMode() bool {
+	return e.State.SmartMode
 }
 
 // Internal Commands

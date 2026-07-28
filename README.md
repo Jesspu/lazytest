@@ -10,7 +10,8 @@ While it defaults to **Jest**, LazyTest is **test-runner agnostic** and can be c
 
 *   **Vim-style Navigation**: Navigate your file tree with `j`, `k`, `h`, `l`.
 *   **Instant Feedback**: Real-time output streaming with ANSI color support.
-*   **Smart Test Selection**: Automatically runs tests related to changed source files using dependency graph analysis. No more running the whole suite for a one-line change.
+*   **Smart Mode (Auto-Run)**: Toggle a persistent Smart Mode with `s`. When active, any file change automatically queues every transitively-affected test — no manual watching required. A `[SMART MODE]` badge appears in the footer.
+*   **Smart Test Selection**: Use `a` to add tests related to currently changed source files (via `git diff`) to your watched list in one keypress.
 *   **File Watching**: Automatically detects new test files and updates the tree in real-time.
 *   **Context Awareness**: Automatically finds the nearest `package.json` to run tests in the correct context (perfect for monorepos).
 *   **Status Indicators**: Visual feedback for running (⏳), passed (✅), and failed (❌) tests.
@@ -60,7 +61,8 @@ mv lazytest /usr/local/bin/
 | `k` / `↑` | Move cursor up |
 | `Enter` | Run the selected test file |
 | `Tab` | Switch between File Explorer and Output panes |
-| `a` | **Add Related**: Run tests related to the selected file (Smart Selection) |
+| `s` | **Toggle Smart Mode**: Automatically queue all tests affected by file changes (no manual watching needed). Badge shows `[SMART MODE]` when active. |
+| `a` | **Add Related**: Watch tests related to git-changed source files (one-time action, Manual Mode) |
 | `r` | Re-run the last executed test |
 | `R` | Refresh file tree and clear test states |
 | `/` | Enter Search Mode |

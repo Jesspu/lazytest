@@ -34,6 +34,9 @@ type State struct {
 	LastRunNode   *filesystem.Node
 	CurrentOutput string
 	RootPath      string
+
+	// Mode
+	SmartMode bool // If true, automatically queue all affected test files on file change
 }
 
 // NewState creates a new State instance.
