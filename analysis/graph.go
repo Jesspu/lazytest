@@ -155,37 +155,6 @@ func (g *Graph) Update(path string) {
 	}
 }
 
-// GetDependents returns a list of all files that depend on the given path (transitively).
-func (g *Graph) GetDependents(path string) []string {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	visited := make(map[string]bool)
-	var dependents []string
-
-	// Queue for BFS
-	queue := []string{path}
-	visited[path] = true
-
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-
-		// Find files that import 'current'
-		if deps, ok := g.Reverse[current]; ok {
-			for dep := range deps {
-				if !visited[dep] {
-					visited[dep] = true
-					dependents = append(dependents, dep)
-					queue = append(queue, dep)
-				}
-			}
-		}
-	}
-
-	return dependents
-}
-
 // GetAffectedDependents returns files that transitively depend on path, but stops
 // BFS propagation along any edge where the dependent mocks the dependency
 // (i.e. depType == DepMocked). This prevents false-positive test queuing:
@@ -233,20 +202,6 @@ func (g *Graph) GetAffectedDependents(path string) []string {
 }
 
 
-
-// GetDependencyType returns the type of dependency between dependent and dependency.
-// Returns DepRegular if not found (or default).
-func (g *Graph) GetDependencyType(dependent, dependency string) DependencyType {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
-	if deps, ok := g.Forward[dependent]; ok {
-		if depType, ok := deps[dependency]; ok {
-			return depType
-		}
-	}
-	return DepRegular
-}
 
 // Internal helpers
 

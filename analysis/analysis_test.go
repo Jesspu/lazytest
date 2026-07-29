@@ -36,9 +36,9 @@ func TestGraph(t *testing.T) {
 		t.Fatalf("Failed to build graph: %v", err)
 	}
 
-	// Test GetDependents for utils.ts
+	// Test GetAffectedDependents for utils.ts
 	utilsPath := filepath.Join(tmpDir, "utils.ts")
-	dependents := g.GetDependents(utilsPath)
+	dependents := g.GetAffectedDependents(utilsPath)
 
 	expected := []string{
 		filepath.Join(tmpDir, "component.ts"),
@@ -97,9 +97,9 @@ func TestGraph_RelativeImports(t *testing.T) {
 		t.Fatalf("Failed to build graph: %v", err)
 	}
 
-	// Test GetDependents for src/app.tsx
+	// Test GetAffectedDependents for src/app.tsx
 	appPath := filepath.Join(tmpDir, "src/app.tsx")
-	dependents := g.GetDependents(appPath)
+	dependents := g.GetAffectedDependents(appPath)
 
 	expected := []string{
 		filepath.Join(tmpDir, "test/app.test.tsx"),
@@ -151,10 +151,10 @@ func TestGraph_CaseSensitivity(t *testing.T) {
 		t.Fatalf("Failed to build graph: %v", err)
 	}
 
-	// Test GetDependents for src/App.tsx
+	// Test GetAffectedDependents for src/App.tsx
 	// Note: We query with the actual file path (TitleCase) because that's what the UI/Walker would provide.
 	appPath := filepath.Join(tmpDir, "src/App.tsx")
-	dependents := g.GetDependents(appPath)
+	dependents := g.GetAffectedDependents(appPath)
 
 	expected := []string{
 		filepath.Join(tmpDir, "test/app.test.tsx"),
@@ -196,7 +196,7 @@ func TestGraph_Update(t *testing.T) {
 	bPath := filepath.Join(tmpDir, "b.ts")
 
 	// Verify initial dependency
-	deps := g.GetDependents(aPath)
+	deps := g.GetAffectedDependents(aPath)
 	if len(deps) != 1 || deps[0] != bPath {
 		t.Errorf("Initial: Expected b.ts to depend on a.ts, got %v", deps)
 	}
@@ -208,7 +208,7 @@ func TestGraph_Update(t *testing.T) {
 	}
 	g.Update(bPath)
 
-	deps = g.GetDependents(aPath)
+	deps = g.GetAffectedDependents(aPath)
 	if len(deps) != 0 {
 		t.Errorf("After removal: Expected no dependents for a.ts, got %v", deps)
 	}
@@ -219,7 +219,7 @@ func TestGraph_Update(t *testing.T) {
 	}
 	g.Update(bPath)
 
-	deps = g.GetDependents(aPath)
+	deps = g.GetAffectedDependents(aPath)
 	if len(deps) != 1 || deps[0] != bPath {
 		t.Errorf("After re-add: Expected b.ts to depend on a.ts, got %v", deps)
 	}
@@ -251,7 +251,7 @@ func TestGraph_Update(t *testing.T) {
 	g.Update(dPath) // This should trigger resolution of pending import from c.ts
 
 	// Verify c.ts depends on d.ts
-	dDeps := g.GetDependents(dPath)
+	dDeps := g.GetAffectedDependents(dPath)
 	if len(dDeps) != 1 || dDeps[0] != cPath {
 		t.Errorf("After creating d.ts: Expected c.ts to depend on d.ts, got %v", dDeps)
 	}
@@ -549,7 +549,7 @@ func TestGraph_TSAlias(t *testing.T) {
 	}
 
 	utilsPath := filepath.Join(tmpDir, "src/utils.ts")
-	dependents := g.GetDependents(utilsPath)
+	dependents := g.GetAffectedDependents(utilsPath)
 
 	// Expect src/api.ts and transitively tests/api.test.ts
 	depSet := make(map[string]bool)
@@ -633,56 +633,66 @@ jest.mock('./middle');
 	}
 }
 
-// TestGetAffectedDependents_NonMockedBehavesLikeGetDependents confirms that
-// when no mocks are present, GetAffectedDependents returns the same set as
-// GetDependents (regression guard).
-func TestGetAffectedDependents_NonMockedBehavesLikeGetDependents(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "lazytest_affected_regression")
+// TestGraph_MockedDependency verifies that jest.mock, jest.doMock, and jest.setMock
+// mark dependencies as DepMocked, insulating tests from GetAffectedDependents.
+func TestGraph_MockedDependency(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest_mocked_dep")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(tmpDir)
 
 	files := map[string]string{
-		"a.ts":      "export const a = 1;",
-		"b.ts":      "import { a } from './a';",
-		"c.test.ts": "import { a } from './b';",
+		"utils.ts":     "export const foo = 'bar';",
+		"real.test.ts": "import { foo } from './utils';",
+		"mocked.test.ts": `
+import { foo } from './utils';
+jest.mock('./utils');
+`,
+		"domock.test.ts": `
+import { foo } from './utils';
+jest.doMock('./utils', () => {});
+`,
+		"setmock.test.ts": `
+import { foo } from './utils';
+jest.setMock('./utils', {});
+`,
 	}
 
 	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0644); err != nil {
+		path := filepath.Join(tmpDir, name)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	g := NewGraph()
 	if err := g.Build(tmpDir); err != nil {
-		t.Fatalf("Build failed: %v", err)
+		t.Fatalf("Failed to build graph: %v", err)
 	}
 
-	aPath := filepath.Join(tmpDir, "a.ts")
+	utilsPath := filepath.Join(tmpDir, "utils.ts")
+	affected := g.GetAffectedDependents(utilsPath)
 
-	plain := g.GetDependents(aPath)
-	affected := g.GetAffectedDependents(aPath)
+	realTestPath := filepath.Join(tmpDir, "real.test.ts")
+	mockedTestPath := filepath.Join(tmpDir, "mocked.test.ts")
+	doMockTestPath := filepath.Join(tmpDir, "domock.test.ts")
+	setMockTestPath := filepath.Join(tmpDir, "setmock.test.ts")
 
-	plainSet := make(map[string]bool)
-	for _, p := range plain {
-		plainSet[p] = true
-	}
-	affectedSet := make(map[string]bool)
-	for _, p := range affected {
-		affectedSet[p] = true
+	// GetAffectedDependents should include real.test.ts but exclude mocked files
+	if len(affected) != 1 || affected[0] != realTestPath {
+		t.Errorf("Expected affected dependents [%s], got %v", realTestPath, affected)
 	}
 
-	for p := range plainSet {
-		if !affectedSet[p] {
-			t.Errorf("GetAffectedDependents missing %s which GetDependents found (no mocks in graph)", p)
-		}
+	// Verify Forward map has DepMocked for mocked tests
+	if g.Forward[mockedTestPath][utilsPath] != DepMocked {
+		t.Errorf("Expected mocked.test.ts to have DepMocked for utils.ts")
 	}
-	for p := range affectedSet {
-		if !plainSet[p] {
-			t.Errorf("GetAffectedDependents returned %s which GetDependents did not find (no mocks in graph)", p)
-		}
+	if g.Forward[doMockTestPath][utilsPath] != DepMocked {
+		t.Errorf("Expected domock.test.ts to have DepMocked for utils.ts")
+	}
+	if g.Forward[setMockTestPath][utilsPath] != DepMocked {
+		t.Errorf("Expected setmock.test.ts to have DepMocked for utils.ts")
 	}
 }
 
