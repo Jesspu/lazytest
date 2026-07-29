@@ -168,6 +168,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.engine.IsSmartMode() {
 					return m, m.engine.RunSuiteFailures()
 				}
+			case key.Matches(msg, m.keys.AddRelated):
+				if m.engine.IsSmartMode() {
+					return m, m.engine.RunAffectedSuite()
+				}
+				changedFiles, err := filesystem.GetChangedFiles(m.engine.State.RootPath)
+				if err != nil {
+					m.engine.State.CurrentOutput += fmt.Sprintf("Error getting changed files: %v\n", err)
+				} else {
+					count := 0
+					for _, src := range changedFiles {
+						related := m.engine.FindRelatedTests(src)
+						for _, test := range related {
+							if !m.engine.IsWatched(test) {
+								m.engine.ToggleWatch(test)
+								count++
+							}
+						}
+					}
+				}
 			case key.Matches(msg, m.keys.ToggleSmartMode):
 				m.engine.ToggleSmartMode()
 				m.applySmartModeBindings()
@@ -323,25 +342,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						node := m.flatNodes[m.cursor]
 						if !node.IsDir {
 							m.engine.ToggleWatch(node.Path)
-						}
-					}
-				case key.Matches(msg, m.keys.AddRelated):
-					if m.engine.IsSmartMode() {
-						return m, m.engine.RunAffectedSuite()
-					}
-					changedFiles, err := filesystem.GetChangedFiles(m.engine.State.RootPath)
-					if err != nil {
-						m.engine.State.CurrentOutput += fmt.Sprintf("Error getting changed files: %v\n", err)
-					} else {
-						count := 0
-						for _, src := range changedFiles {
-							related := m.engine.FindRelatedTests(src)
-							for _, test := range related {
-								if !m.engine.IsWatched(test) {
-									m.engine.ToggleWatch(test)
-									count++
-								}
-							}
 						}
 					}
 				default:
@@ -609,4 +609,3 @@ func (m Model) renderSuiteBadge(passed, failed, running int) string {
 
 	return label + sep + passedStr + dot + failedStr + dot + runningStr
 }
-
