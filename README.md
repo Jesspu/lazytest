@@ -135,3 +135,7 @@ LazyTest is built with Go and uses the [Charm](https://charm.sh/) ecosystem.
 *   `runner/`: Manages process execution and configuration parsing.
 *   `analysis/`: Dependency graph parsing for Smart Test Selection.
 *   `filesystem/`: High-performance directory walking and `.gitignore` support.
+
+## Development
+
+Check out the [Dev Log](DEVLOG.md) to see a history of major features and structural changes implemented.
