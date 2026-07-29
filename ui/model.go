@@ -139,39 +139,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
 						m.activeTab = TabWatched
-						if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
-							path := m.engine.GetWatchedFiles()[m.watchedCursor]
-							if out, ok := m.engine.GetTestOutput(path); ok {
-								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
-							} else {
-								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
-							}
-							m.viewport.GotoBottom()
-						}
 					} else {
 						m.activeTab = TabExplorer
-						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
-						m.viewport.GotoBottom()
 					}
+					m.syncViewportOutput()
 				}
 			case key.Matches(msg, m.keys.PrevTab):
 				if m.activePane == PaneExplorer {
 					if m.activeTab == TabExplorer {
 						m.activeTab = TabWatched
-						if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
-							path := m.engine.GetWatchedFiles()[m.watchedCursor]
-							if out, ok := m.engine.GetTestOutput(path); ok {
-								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
-							} else {
-								m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
-							}
-							m.viewport.GotoBottom()
-						}
 					} else {
 						m.activeTab = TabExplorer
-						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
-						m.viewport.GotoBottom()
 					}
+					m.syncViewportOutput()
 				}
 			case key.Matches(msg, m.keys.ClearWatched):
 				m.engine.ClearWatched()
@@ -191,24 +171,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case key.Matches(msg, m.keys.Up):
 					if m.watchedCursor > 0 {
 						m.watchedCursor--
-						path := m.engine.GetWatchedFiles()[m.watchedCursor]
-						if out, ok := m.engine.GetTestOutput(path); ok {
-							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
-						} else {
-							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
-						}
-						m.viewport.GotoBottom()
+						m.syncViewportOutput()
 					}
 				case key.Matches(msg, m.keys.Down):
 					if m.watchedCursor < len(m.engine.GetWatchedFiles())-1 {
 						m.watchedCursor++
-						path := m.engine.GetWatchedFiles()[m.watchedCursor]
-						if out, ok := m.engine.GetTestOutput(path); ok {
-							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
-						} else {
-							m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No output yet."))
-						}
-						m.viewport.GotoBottom()
+						m.syncViewportOutput()
 					}
 				case key.Matches(msg, m.keys.Enter):
 					if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
@@ -286,11 +254,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if len(m.searchMatches) > 0 {
 							m.currentMatchIndex = (m.currentMatchIndex + 1) % len(m.searchMatches)
 							m.cursor = m.searchMatches[m.currentMatchIndex]
+							m.syncViewportOutput()
 						}
 					case key.Matches(msg, m.keys.PrevMatch):
 						if len(m.searchMatches) > 0 {
 							m.currentMatchIndex = (m.currentMatchIndex - 1 + len(m.searchMatches)) % len(m.searchMatches)
 							m.cursor = m.searchMatches[m.currentMatchIndex]
+							m.syncViewportOutput()
 						}
 					case key.Matches(msg, m.keys.Enter):
 						// Select/Run the file
@@ -322,6 +292,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						newCursor--
 					}
+					m.syncViewportOutput()
 				case key.Matches(msg, m.keys.Down):
 					// Smart Navigation Down
 					newCursor := m.cursor + 1
@@ -332,6 +303,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						newCursor++
 					}
+					m.syncViewportOutput()
 				case key.Matches(msg, m.keys.Enter):
 					if m.cursor < len(m.flatNodes) {
 						node := m.flatNodes[m.cursor]
@@ -400,18 +372,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case engine.TreeLoadedMsg:
 		m.flatNodes = flattenNodes(m.engine.GetTree())
+		m.syncViewportOutput()
 		return m, nil
 
 	case engine.WatcherMsg:
-		m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
-		m.viewport.GotoBottom()
+		m.syncViewportOutput()
 		return m, tea.Batch(cmds...)
 
 	case runner.OutputUpdate:
 		shouldShow := true
-		if m.activeTab == TabWatched {
-			if m.watchedCursor < len(m.engine.GetWatchedFiles()) && m.engine.GetWatchedFiles()[m.watchedCursor] != m.engine.GetRunningNode().Path {
-				shouldShow = false
+		runningNode := m.engine.GetRunningNode()
+		if runningNode != nil {
+			if m.activeTab == TabWatched {
+				watched := m.engine.GetWatchedFiles()
+				if m.watchedCursor < len(watched) && watched[m.watchedCursor] != runningNode.Path {
+					shouldShow = false
+				}
+			} else if m.activeTab == TabExplorer {
+				if m.cursor < len(m.flatNodes) && m.flatNodes[m.cursor].Path != runningNode.Path {
+					shouldShow = false
+				}
 			}
 		}
 
@@ -422,8 +402,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case runner.StatusUpdate:
-		m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
-		m.viewport.GotoBottom()
+		// After a test finishes, sync to show the final stored output for the
+		// currently selected file (respects cursor position).
+		m.syncViewportOutput()
 		return m, tea.Batch(cmds...)
 	}
 
@@ -435,6 +416,53 @@ func (m Model) wrapOutput(width int, content string) string {
 		return content
 	}
 	return lipgloss.NewStyle().Width(width).Render(content)
+}
+
+// syncViewportOutput resolves and renders the correct output for the currently
+// selected file/tab into the viewport. It is the single source of truth for
+// deciding what the right-hand pane should display.
+func (m *Model) syncViewportOutput() {
+	if !m.ready {
+		return
+	}
+
+	var content string
+
+	if m.activeTab == TabWatched {
+		watchedFiles := m.engine.GetWatchedFiles()
+		if m.watchedCursor < len(watchedFiles) {
+			path := watchedFiles[m.watchedCursor]
+			if out, ok := m.engine.GetTestOutput(path); ok && out != "" {
+				content = out
+			} else {
+				content = "No output yet."
+			}
+		} else {
+			content = "No watched files.\nPress 'w' on a file to watch it."
+		}
+	} else {
+		// TabExplorer
+		if m.cursor < len(m.flatNodes) {
+			node := m.flatNodes[m.cursor]
+			if !node.IsDir {
+				if out, ok := m.engine.GetTestOutput(node.Path); ok && out != "" {
+					content = out
+				} else if filesystem.IsTestFile(node.Name) {
+					content = "No output yet for this test file.\nPress <Enter> to run, 'w' to watch, or 's' for Smart Mode."
+				} else {
+					content = fmt.Sprintf("Source file: %s\nPress 'w' to watch or 's' for Smart Mode.", node.Name)
+				}
+			} else {
+				content = fmt.Sprintf("Directory: %s", node.Name)
+			}
+		}
+	}
+
+	if content == "" {
+		content = m.engine.GetCurrentOutput()
+	}
+
+	m.viewport.SetContent(m.wrapOutput(m.viewport.Width, content))
 }
 
 // View renders the UI based on the current state.
