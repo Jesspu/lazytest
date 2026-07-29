@@ -126,12 +126,14 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 			queuedSet[q] = struct{}{}
 		}
 
-		// Enqueue (deduplicated)
+		// Enqueue (deduplicated) and track in Affected suite
 		for _, testPath := range testsToQueue {
 			if _, alreadyQueued := queuedSet[testPath]; !alreadyQueued {
 				e.State.Queue = append(e.State.Queue, testPath)
 				queuedSet[testPath] = struct{}{}
 			}
+			// Always record in Affected even if already queued
+			e.State.Affected[testPath] = struct{}{}
 		}
 
 		var cmd tea.Cmd
@@ -197,6 +199,8 @@ func (e *Engine) TriggerTest(node *filesystem.Node) tea.Cmd {
 	e.State.CurrentOutput = fmt.Sprintf("Running %s...\n", node.Name)
 	e.State.TestOutputs[node.Path] = e.State.CurrentOutput
 	e.State.NodeStatus[node.Path] = StatusRunning
+	// Track in affected suite regardless of mode
+	e.State.Affected[node.Path] = struct{}{}
 
 	job, err := runner.PrepareJob(node.Path)
 	if err != nil {
@@ -349,5 +353,134 @@ func (e *Engine) FindRelatedTests(path string) []string {
 
 func (e *Engine) buildGraph() tea.Msg {
 	e.Graph.Build(e.State.RootPath)
+	return nil
+}
+
+// GetAffectedSuite returns all test paths that have been queued or executed
+// during the session, sorted by status priority:
+//
+//	1. StatusFail
+//	2. StatusRunning
+//	3. StatusPass
+//	4. StatusIdle / not yet run
+//
+// Within each group paths are sorted alphabetically.
+func (e *Engine) GetAffectedSuite() []string {
+	result := make([]string, 0, len(e.State.Affected))
+	for path := range e.State.Affected {
+		result = append(result, path)
+	}
+
+	// Priority: Fail=0, Running=1, Pass=2, Idle=3
+	priority := func(path string) int {
+		switch e.State.NodeStatus[path] {
+		case StatusFail:
+			return 0
+		case StatusRunning:
+			return 1
+		case StatusPass:
+			return 2
+		default: // StatusIdle or not set
+			return 3
+		}
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		pi, pj := priority(result[i]), priority(result[j])
+		if pi != pj {
+			return pi < pj
+		}
+		return result[i] < result[j]
+	})
+
+	return result
+}
+
+// GetSuiteStats returns the count of passed, failed, and running tests
+// across all paths currently in the Affected suite.
+func (e *Engine) GetSuiteStats() (passed, failed, running int) {
+	for path := range e.State.Affected {
+		switch e.State.NodeStatus[path] {
+		case StatusPass:
+			passed++
+		case StatusFail:
+			failed++
+		case StatusRunning:
+			running++
+		}
+	}
+	return
+}
+
+// ClearAffectedSuite removes all passing (StatusPass) and idle/unrun tests
+// from State.Affected, keeping only failing and currently running entries.
+func (e *Engine) ClearAffectedSuite() {
+	for path := range e.State.Affected {
+		switch e.State.NodeStatus[path] {
+		case StatusFail, StatusRunning:
+			// keep
+		default:
+			delete(e.State.Affected, path)
+		}
+	}
+}
+
+// RunSuiteFailures queues all tests in the Affected suite that are currently
+// failing (StatusFail) for re-execution.
+func (e *Engine) RunSuiteFailures() tea.Cmd {
+	var nodes []*filesystem.Node
+	for path := range e.State.Affected {
+		if e.State.NodeStatus[path] == StatusFail {
+			nodes = append(nodes, &filesystem.Node{
+				Path: path,
+				Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
+			})
+		}
+	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Path < nodes[j].Path })
+	return e.enqueueNodes(nodes)
+}
+
+// RunAffectedSuite queues every test currently in the Affected suite for
+// re-execution.
+func (e *Engine) RunAffectedSuite() tea.Cmd {
+	var nodes []*filesystem.Node
+	for path := range e.State.Affected {
+		nodes = append(nodes, &filesystem.Node{
+			Path: path,
+			Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
+		})
+	}
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Path < nodes[j].Path })
+	return e.enqueueNodes(nodes)
+}
+
+// enqueueNodes appends nodes to the queue (deduplicating) and triggers the
+// first one if the runner is currently idle.
+func (e *Engine) enqueueNodes(nodes []*filesystem.Node) tea.Cmd {
+	queuedSet := make(map[string]struct{})
+	for _, q := range e.State.Queue {
+		queuedSet[q] = struct{}{}
+	}
+	if e.State.RunningNode != nil {
+		queuedSet[e.State.RunningNode.Path] = struct{}{}
+	}
+
+	for _, node := range nodes {
+		if _, exists := queuedSet[node.Path]; !exists {
+			e.State.Queue = append(e.State.Queue, node.Path)
+			queuedSet[node.Path] = struct{}{}
+		}
+	}
+
+	if e.State.RunningNode == nil && len(e.State.Queue) > 0 {
+		nextPath := e.State.Queue[0]
+		e.State.Queue = e.State.Queue[1:]
+		next := &filesystem.Node{
+			Path: nextPath,
+			Name: nextPath[strings.LastIndex(nextPath, string(os.PathSeparator))+1:],
+		}
+		return e.TriggerTest(next)
+	}
 	return nil
 }

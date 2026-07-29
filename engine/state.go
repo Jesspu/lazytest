@@ -22,7 +22,8 @@ const (
 type State struct {
 	// Data
 	Tree    *filesystem.Node
-	Watched map[string]struct{}
+	Watched  map[string]struct{}
+	Affected map[string]struct{}
 
 	// Test Execution State
 	Queue       []string
@@ -46,6 +47,7 @@ func NewState(rootPath string) State {
 		NodeStatus:  make(map[string]TestStatus),
 		TestOutputs: make(map[string]string),
 		Watched:     make(map[string]struct{}),
+		Affected:    make(map[string]struct{}),
 		Queue:       make([]string, 0),
 	}
 }

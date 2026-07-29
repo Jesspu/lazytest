@@ -154,19 +154,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.syncViewportOutput()
 				}
 			case key.Matches(msg, m.keys.ClearWatched):
-				m.engine.ClearWatched()
-				m.watchedCursor = 0
-				if m.activeTab == TabWatched {
-					m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No watched files.\nPress 'w' on a file to watch it."))
+				if m.engine.IsSmartMode() {
+					m.engine.ClearAffectedSuite()
+					m.watchedCursor = 0
+					m.syncViewportOutput()
+				} else {
+					m.engine.ClearWatched()
+					m.watchedCursor = 0
+					if m.activeTab == TabWatched {
+						m.viewport.SetContent(m.wrapOutput(m.viewport.Width, "No watched files.\nPress 'w' on a file to watch it."))
+					}
+				}
+			case key.Matches(msg, m.keys.RunFailures):
+				if m.engine.IsSmartMode() {
+					return m, m.engine.RunSuiteFailures()
 				}
 			case key.Matches(msg, m.keys.ToggleSmartMode):
 				m.engine.ToggleSmartMode()
+				m.applySmartModeBindings()
 			}
 		}
 
 		// Handle pane-specific keys
 		if m.activePane == PaneExplorer {
 			if m.activeTab == TabWatched {
+				// In Smart Mode the watched tab shows the Affected Suite list.
+				var tabList []string
+				if m.engine.IsSmartMode() {
+					tabList = m.engine.GetAffectedSuite()
+				} else {
+					tabList = m.engine.GetWatchedFiles()
+				}
 				switch {
 				case key.Matches(msg, m.keys.Up):
 					if m.watchedCursor > 0 {
@@ -174,14 +192,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.syncViewportOutput()
 					}
 				case key.Matches(msg, m.keys.Down):
-					if m.watchedCursor < len(m.engine.GetWatchedFiles())-1 {
+					if m.watchedCursor < len(tabList)-1 {
 						m.watchedCursor++
 						m.syncViewportOutput()
 					}
 				case key.Matches(msg, m.keys.Enter):
-					if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
-						path := m.engine.GetWatchedFiles()[m.watchedCursor]
-						// Create a dummy node for triggering the test
+					if m.watchedCursor < len(tabList) {
+						path := tabList[m.watchedCursor]
 						node := &filesystem.Node{
 							Path: path,
 							Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
@@ -189,8 +206,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return m, m.engine.TriggerTest(node)
 					}
 				case key.Matches(msg, m.keys.ToggleWatch):
-					if m.watchedCursor < len(m.engine.GetWatchedFiles()) {
-						path := m.engine.GetWatchedFiles()[m.watchedCursor]
+					if !m.engine.IsSmartMode() && m.watchedCursor < len(tabList) {
+						path := tabList[m.watchedCursor]
 						m.engine.ToggleWatch(path)
 						if m.watchedCursor >= len(m.engine.GetWatchedFiles()) && m.watchedCursor > 0 {
 							m.watchedCursor--
@@ -319,6 +336,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 				case key.Matches(msg, m.keys.AddRelated):
+					if m.engine.IsSmartMode() {
+						return m, m.engine.RunAffectedSuite()
+					}
 					changedFiles, err := filesystem.GetChangedFiles(m.engine.State.RootPath)
 					if err != nil {
 						m.engine.State.CurrentOutput += fmt.Sprintf("Error getting changed files: %v\n", err)
@@ -384,8 +404,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		runningNode := m.engine.GetRunningNode()
 		if runningNode != nil {
 			if m.activeTab == TabWatched {
-				watched := m.engine.GetWatchedFiles()
-				if m.watchedCursor < len(watched) && watched[m.watchedCursor] != runningNode.Path {
+				var tabList []string
+				if m.engine.IsSmartMode() {
+					tabList = m.engine.GetAffectedSuite()
+				} else {
+					tabList = m.engine.GetWatchedFiles()
+				}
+				if m.watchedCursor < len(tabList) && tabList[m.watchedCursor] != runningNode.Path {
 					shouldShow = false
 				}
 			} else if m.activeTab == TabExplorer {
@@ -402,6 +427,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case runner.StatusUpdate:
+		// Zero-Touch Failure Auto-Focus (Smart Mode only):
+		// When a test fails in Smart Mode, automatically jump to it.
+		if msg.Err != nil && m.engine.IsSmartMode() {
+			suite := m.engine.GetAffectedSuite()
+			// The failed test will be first after re-sort (StatusFail priority)
+			if len(suite) > 0 {
+				m.activeTab = TabWatched
+				m.watchedCursor = 0
+				path := suite[0]
+				if out, ok := m.engine.GetTestOutput(path); ok && out != "" {
+					m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
+					m.viewport.GotoBottom()
+				}
+				return m, tea.Batch(cmds...)
+			}
+		}
 		// After a test finishes, sync to show the final stored output for the
 		// currently selected file (respects cursor position).
 		m.syncViewportOutput()
@@ -429,16 +470,24 @@ func (m *Model) syncViewportOutput() {
 	var content string
 
 	if m.activeTab == TabWatched {
-		watchedFiles := m.engine.GetWatchedFiles()
-		if m.watchedCursor < len(watchedFiles) {
-			path := watchedFiles[m.watchedCursor]
+		var tabList []string
+		var emptyMsg string
+		if m.engine.IsSmartMode() {
+			tabList = m.engine.GetAffectedSuite()
+			emptyMsg = "No tests affected yet.\nEdit a source file to trigger Smart Mode."
+		} else {
+			tabList = m.engine.GetWatchedFiles()
+			emptyMsg = "No watched files.\nPress 'w' on a file to watch it."
+		}
+		if m.watchedCursor < len(tabList) {
+			path := tabList[m.watchedCursor]
 			if out, ok := m.engine.GetTestOutput(path); ok && out != "" {
 				content = out
 			} else {
 				content = "No output yet."
 			}
 		} else {
-			content = "No watched files.\nPress 'w' on a file to watch it."
+			content = emptyMsg
 		}
 	} else {
 		// TabExplorer
@@ -483,7 +532,13 @@ func (m Model) View() string {
 
 	// Output View
 	var outputView strings.Builder
-	outputView.WriteString(titleStyle.Render("OUTPUT") + "\n\n")
+	if m.engine.IsSmartMode() {
+		passed, failed, running := m.engine.GetSuiteStats()
+		badge := m.renderSuiteBadge(passed, failed, running)
+		outputView.WriteString(badge + "\n")
+	} else {
+		outputView.WriteString(titleStyle.Render("OUTPUT") + "\n\n")
+	}
 
 	if !m.ready {
 		outputView.WriteString("Initializing...")
@@ -505,3 +560,67 @@ func (m Model) View() string {
 
 	return lipgloss.JoinVertical(lipgloss.Left, panes, footer)
 }
+
+// applySmartModeBindings updates key enabled states and help labels to reflect
+// the current smart mode state. Call this immediately after toggling smart mode.
+func (m *Model) applySmartModeBindings() {
+	smartMode := m.engine.IsSmartMode()
+
+	// ToggleWatch is meaningless in Smart Mode
+	m.keys.ToggleWatch.SetEnabled(!smartMode)
+
+	// RunFailures is only available in Smart Mode
+	m.keys.RunFailures.SetEnabled(smartMode)
+
+	// Repurpose ClearWatched and AddRelated labels in Smart Mode
+	if smartMode {
+		m.keys.ClearWatched = key.NewBinding(
+			key.WithKeys("W"),
+			key.WithHelp("W", "clear suite"),
+		)
+		m.keys.AddRelated = key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "run suite"),
+		)
+	} else {
+		m.keys.ClearWatched = key.NewBinding(
+			key.WithKeys("W"),
+			key.WithHelp("W", "clear watched"),
+		)
+		m.keys.AddRelated = key.NewBinding(
+			key.WithKeys("a"),
+			key.WithHelp("a", "add related"),
+		)
+	}
+}
+
+// renderSuiteBadge renders the live suite stats header shown in Smart Mode.
+// Example:  ⚡ SMART MODE | 3 Passed • 1 Failed • 0 Running
+func (m Model) renderSuiteBadge(passed, failed, running int) string {
+	label := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#A78BFA"}).
+		Bold(true).
+		Padding(0, 1).
+		Render("⚡ SMART MODE")
+
+	sep := lipgloss.NewStyle().
+		Foreground(subtle).
+		Render(" | ")
+
+	passedStr := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "#15803D", Dark: "#4ADE80"}).
+		Render(fmt.Sprintf("%d Passed", passed))
+
+	failedStr := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "#B91C1C", Dark: "#F87171"}).
+		Render(fmt.Sprintf("%d Failed", failed))
+
+	runningStr := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FCD34D"}).
+		Render(fmt.Sprintf("%d Running", running))
+
+	dot := lipgloss.NewStyle().Foreground(subtle).Render(" • ")
+
+	return label + sep + passedStr + dot + failedStr + dot + runningStr
+}
+

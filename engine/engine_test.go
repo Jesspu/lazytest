@@ -497,3 +497,227 @@ func TestConfigChangeHandling_SmartMode(t *testing.T) {
 		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.CurrentOutput)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Phase 1: Affected Suite tests
+// ---------------------------------------------------------------------------
+
+// TestGetAffectedSuite_Sorting verifies that GetAffectedSuite returns paths
+// ordered: Fail → Running → Pass → Idle, with alphabetical tie-breaking.
+func TestGetAffectedSuite_Sorting(t *testing.T) {
+	e := New("/tmp")
+
+	fail    := "/tmp/fail.test.js"
+	running := "/tmp/running.test.js"
+	pass    := "/tmp/pass.test.js"
+	idle    := "/tmp/idle.test.js"
+
+	for _, p := range []string{pass, idle, running, fail} {
+		e.State.Affected[p] = struct{}{}
+	}
+	e.State.NodeStatus[fail]    = StatusFail
+	e.State.NodeStatus[running] = StatusRunning
+	e.State.NodeStatus[pass]    = StatusPass
+	// idle has no status set (StatusIdle / zero value)
+
+	suite := e.GetAffectedSuite()
+
+	if len(suite) != 4 {
+		t.Fatalf("Expected 4 items, got %d: %v", len(suite), suite)
+	}
+	if suite[0] != fail {
+		t.Errorf("Expected first item to be fail, got %s", suite[0])
+	}
+	if suite[1] != running {
+		t.Errorf("Expected second item to be running, got %s", suite[1])
+	}
+	if suite[2] != pass {
+		t.Errorf("Expected third item to be pass, got %s", suite[2])
+	}
+	if suite[3] != idle {
+		t.Errorf("Expected fourth item to be idle, got %s", suite[3])
+	}
+}
+
+// TestGetAffectedSuite_AlphabeticalTieBreak verifies that two tests in the
+// same status bucket are sorted alphabetically.
+func TestGetAffectedSuite_AlphabeticalTieBreak(t *testing.T) {
+	e := New("/tmp")
+
+	a := "/tmp/alpha.test.js"
+	b := "/tmp/beta.test.js"
+
+	e.State.Affected[b] = struct{}{}
+	e.State.Affected[a] = struct{}{}
+	e.State.NodeStatus[a] = StatusFail
+	e.State.NodeStatus[b] = StatusFail
+
+	suite := e.GetAffectedSuite()
+	if len(suite) != 2 {
+		t.Fatalf("Expected 2 items, got %d", len(suite))
+	}
+	if suite[0] != a || suite[1] != b {
+		t.Errorf("Expected alphabetical order [%s, %s], got %v", a, b, suite)
+	}
+}
+
+// TestGetSuiteStats verifies exact counts for passed, failed, and running.
+func TestGetSuiteStats(t *testing.T) {
+	e := New("/tmp")
+
+	paths := []struct {
+		path   string
+		status TestStatus
+	}{
+		{"/tmp/a.test.js", StatusPass},
+		{"/tmp/b.test.js", StatusPass},
+		{"/tmp/c.test.js", StatusFail},
+		{"/tmp/d.test.js", StatusRunning},
+		{"/tmp/e.test.js", StatusIdle},
+	}
+
+	for _, p := range paths {
+		e.State.Affected[p.path]   = struct{}{}
+		e.State.NodeStatus[p.path] = p.status
+	}
+
+	passed, failed, running := e.GetSuiteStats()
+	if passed != 2 {
+		t.Errorf("Expected 2 passed, got %d", passed)
+	}
+	if failed != 1 {
+		t.Errorf("Expected 1 failed, got %d", failed)
+	}
+	if running != 1 {
+		t.Errorf("Expected 1 running, got %d", running)
+	}
+}
+
+// TestClearAffectedSuite verifies that only failing/running tests are kept.
+func TestClearAffectedSuite(t *testing.T) {
+	e := New("/tmp")
+
+	fail    := "/tmp/fail.test.js"
+	running := "/tmp/running.test.js"
+	pass    := "/tmp/pass.test.js"
+	idle    := "/tmp/idle.test.js"
+
+	for _, p := range []string{fail, running, pass, idle} {
+		e.State.Affected[p] = struct{}{}
+	}
+	e.State.NodeStatus[fail]    = StatusFail
+	e.State.NodeStatus[running] = StatusRunning
+	e.State.NodeStatus[pass]    = StatusPass
+
+	e.ClearAffectedSuite()
+
+	if _, ok := e.State.Affected[fail]; !ok {
+		t.Error("Expected failing test to remain after ClearAffectedSuite")
+	}
+	if _, ok := e.State.Affected[running]; !ok {
+		t.Error("Expected running test to remain after ClearAffectedSuite")
+	}
+	if _, ok := e.State.Affected[pass]; ok {
+		t.Error("Expected passing test to be removed by ClearAffectedSuite")
+	}
+	if _, ok := e.State.Affected[idle]; ok {
+		t.Error("Expected idle test to be removed by ClearAffectedSuite")
+	}
+}
+
+// TestRunSuiteFailures verifies that only failing tests are enqueued.
+func TestRunSuiteFailures(t *testing.T) {
+	e := New("/tmp")
+
+	fail1 := "/tmp/a_fail.test.js"
+	fail2 := "/tmp/b_fail.test.js"
+	pass  := "/tmp/pass.test.js"
+	idle  := "/tmp/idle.test.js"
+
+	for _, p := range []string{fail1, fail2, pass, idle} {
+		e.State.Affected[p] = struct{}{}
+	}
+	e.State.NodeStatus[fail1] = StatusFail
+	e.State.NodeStatus[fail2] = StatusFail
+	e.State.NodeStatus[pass]  = StatusPass
+
+	// Pin a running node so nothing fires immediately
+	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
+
+	e.RunSuiteFailures()
+
+	if len(e.State.Queue) != 2 {
+		t.Fatalf("Expected 2 items in queue (only failures), got %d: %v", len(e.State.Queue), e.State.Queue)
+	}
+	if e.State.Queue[0] != fail1 || e.State.Queue[1] != fail2 {
+		t.Errorf("Expected queue [%s, %s], got %v", fail1, fail2, e.State.Queue)
+	}
+}
+
+// TestRunAffectedSuite verifies that every test in the Affected suite is enqueued.
+func TestRunAffectedSuite(t *testing.T) {
+	e := New("/tmp")
+
+	a := "/tmp/a.test.js"
+	b := "/tmp/b.test.js"
+	c := "/tmp/c.test.js"
+
+	for _, p := range []string{a, b, c} {
+		e.State.Affected[p] = struct{}{}
+	}
+	e.State.NodeStatus[a] = StatusPass
+	e.State.NodeStatus[b] = StatusFail
+
+	// Pin a running node so nothing fires immediately
+	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
+
+	e.RunAffectedSuite()
+
+	if len(e.State.Queue) != 3 {
+		t.Fatalf("Expected all 3 items queued, got %d: %v", len(e.State.Queue), e.State.Queue)
+	}
+
+	found := make(map[string]bool)
+	for _, q := range e.State.Queue {
+		found[q] = true
+	}
+	for _, p := range []string{a, b, c} {
+		if !found[p] {
+			t.Errorf("Expected %s in queue, not found: %v", p, e.State.Queue)
+		}
+	}
+}
+
+// TestAffectedPopulatedOnEnqueue verifies that tests added to the queue via a
+// WatcherMsg are automatically recorded in State.Affected.
+func TestAffectedPopulatedOnEnqueue(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lazytest-affected-enqueue")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	sourceFile := filepath.Join(tmpDir, "utils.ts")
+	testFile   := filepath.Join(tmpDir, "utils.test.ts")
+
+	if err := os.WriteFile(sourceFile, []byte("export const x = 1;"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(testFile, []byte("import { x } from './utils';"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	e := New(tmpDir)
+	e.Graph.Build(tmpDir)
+	e.ToggleSmartMode()
+
+	// Pin a running node so the queue won't be consumed immediately
+	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
+
+	_ = e.Update(WatcherMsg(sourceFile))
+
+	if _, ok := e.State.Affected[testFile]; !ok {
+		t.Errorf("Expected %s to be in State.Affected after enqueue, got %v", testFile, e.State.Affected)
+	}
+}
+

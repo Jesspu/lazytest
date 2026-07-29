@@ -27,12 +27,17 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 		Foreground(subtle)
 
 	var explorerTab, watchedTab string
+	// In Smart Mode the second tab is renamed "Affected Suite"
+	watchedTabLabel := "Watched"
+	if m.engine.IsSmartMode() {
+		watchedTabLabel = "Affected Suite"
+	}
 	if m.activeTab == TabExplorer {
 		explorerTab = activeTabStyle.Render("Explorer")
-		watchedTab = inactiveTabStyle.Render("Watched")
+		watchedTab = inactiveTabStyle.Render(watchedTabLabel)
 	} else {
 		explorerTab = inactiveTabStyle.Render("Explorer")
-		watchedTab = activeTabStyle.Render("Watched")
+		watchedTab = activeTabStyle.Render(watchedTabLabel)
 	}
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Bottom, explorerTab, watchedTab)
@@ -68,19 +73,29 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 			}
 		}
 	} else {
-		// Render Watched Files
-		if len(m.engine.GetWatchedFiles()) == 0 {
-			explorerView.WriteString("No watched files.\nPress 'w' on a file to watch it.")
+		// Render Watched / Affected Suite list
+		var tabList []string
+		var emptyHint string
+		if m.engine.IsSmartMode() {
+			tabList = m.engine.GetAffectedSuite()
+			emptyHint = "No tests affected yet.\nEdit a source file to trigger Smart Mode."
+		} else {
+			tabList = m.engine.GetWatchedFiles()
+			emptyHint = "No watched files.\nPress 'w' on a file to watch it."
+		}
+
+		if len(tabList) == 0 {
+			explorerView.WriteString(emptyHint)
 		} else {
 			start := 0
-			end := len(m.engine.GetWatchedFiles())
-			if len(m.engine.GetWatchedFiles()) > treeHeight {
+			end := len(tabList)
+			if len(tabList) > treeHeight {
 				if m.watchedCursor < treeHeight/2 {
 					start = 0
 					end = treeHeight
-				} else if m.watchedCursor > len(m.engine.GetWatchedFiles())-treeHeight/2 {
-					start = len(m.engine.GetWatchedFiles()) - treeHeight
-					end = len(m.engine.GetWatchedFiles())
+				} else if m.watchedCursor > len(tabList)-treeHeight/2 {
+					start = len(tabList) - treeHeight
+					end = len(tabList)
 				} else {
 					start = m.watchedCursor - treeHeight/2
 					end = m.watchedCursor + treeHeight/2
@@ -88,7 +103,7 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 			}
 
 			for i := start; i < end; i++ {
-				path := m.engine.GetWatchedFiles()[i]
+				path := tabList[i]
 				name := path[strings.LastIndex(path, string(os.PathSeparator))+1:]
 
 				cursor := " "
