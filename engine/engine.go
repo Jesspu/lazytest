@@ -2,10 +2,8 @@ package engine
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jesspatton/lazytest/analysis"
@@ -120,35 +118,15 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 			}
 		}
 
-		// Build a set of already-queued items for O(1) deduplication
-		queuedSet := make(map[string]struct{})
-		for _, q := range e.State.Queue {
-			queuedSet[q] = struct{}{}
-		}
-
 		// Enqueue (deduplicated) and track in Affected suite
+		var nodes []*filesystem.Node
 		for _, testPath := range testsToQueue {
-			if _, alreadyQueued := queuedSet[testPath]; !alreadyQueued {
-				e.State.Queue = append(e.State.Queue, testPath)
-				queuedSet[testPath] = struct{}{}
-			}
 			// Always record in Affected even if already queued
 			e.State.Affected[testPath] = struct{}{}
+			nodes = append(nodes, filesystem.NodeFromPath(testPath))
 		}
 
-		var cmd tea.Cmd
-		// Trigger if idle
-		if e.State.RunningNode == nil && len(e.State.Queue) > 0 {
-			nextPath := e.State.Queue[0]
-			e.State.Queue = e.State.Queue[1:]
-			node := &filesystem.Node{
-				Path: nextPath,
-				Name: nextPath[strings.LastIndex(nextPath, string(os.PathSeparator))+1:],
-			}
-			cmd = e.TriggerTest(node)
-		}
-
-		return tea.Batch(e.RefreshTree, cmd, e.waitForWatcherEvents)
+		return tea.Batch(e.RefreshTree, e.enqueueNodes(nodes), e.waitForWatcherEvents)
 
 	case TreeLoadedMsg:
 		e.State.Tree = msg
@@ -178,11 +156,7 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 		if len(e.State.Queue) > 0 {
 			nextPath := e.State.Queue[0]
 			e.State.Queue = e.State.Queue[1:]
-			node := &filesystem.Node{
-				Path: nextPath,
-				Name: nextPath[strings.LastIndex(nextPath, string(os.PathSeparator))+1:],
-			}
-			return tea.Batch(e.waitForUpdates, e.TriggerTest(node))
+			return tea.Batch(e.waitForUpdates, e.TriggerTest(filesystem.NodeFromPath(nextPath)))
 		}
 
 		return e.waitForUpdates
@@ -431,10 +405,7 @@ func (e *Engine) RunSuiteFailures() tea.Cmd {
 	var nodes []*filesystem.Node
 	for path := range e.State.Affected {
 		if e.State.NodeStatus[path] == StatusFail {
-			nodes = append(nodes, &filesystem.Node{
-				Path: path,
-				Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
-			})
+			nodes = append(nodes, filesystem.NodeFromPath(path))
 		}
 	}
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Path < nodes[j].Path })
@@ -446,10 +417,7 @@ func (e *Engine) RunSuiteFailures() tea.Cmd {
 func (e *Engine) RunAffectedSuite() tea.Cmd {
 	var nodes []*filesystem.Node
 	for path := range e.State.Affected {
-		nodes = append(nodes, &filesystem.Node{
-			Path: path,
-			Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
-		})
+		nodes = append(nodes, filesystem.NodeFromPath(path))
 	}
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Path < nodes[j].Path })
 	return e.enqueueNodes(nodes)
@@ -476,11 +444,7 @@ func (e *Engine) enqueueNodes(nodes []*filesystem.Node) tea.Cmd {
 	if e.State.RunningNode == nil && len(e.State.Queue) > 0 {
 		nextPath := e.State.Queue[0]
 		e.State.Queue = e.State.Queue[1:]
-		next := &filesystem.Node{
-			Path: nextPath,
-			Name: nextPath[strings.LastIndex(nextPath, string(os.PathSeparator))+1:],
-		}
-		return e.TriggerTest(next)
+		return e.TriggerTest(filesystem.NodeFromPath(nextPath))
 	}
 	return nil
 }

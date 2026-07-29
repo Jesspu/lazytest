@@ -122,3 +122,18 @@ func TestWalk_Excludes(t *testing.T) {
 		t.Errorf("Should have excluded %s", e2e)
 	}
 }
+
+func TestNodeFromPath(t *testing.T) {
+	path := "/some/dir/foo.test.ts"
+	node := NodeFromPath(path)
+
+	if node.Path != path {
+		t.Errorf("NodeFromPath Path: got %q, want %q", node.Path, path)
+	}
+	if node.Name != "foo.test.ts" {
+		t.Errorf("NodeFromPath Name: got %q, want %q", node.Name, "foo.test.ts")
+	}
+	if node.IsDir {
+		t.Error("NodeFromPath IsDir: expected false")
+	}
+}

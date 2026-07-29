@@ -2,13 +2,26 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jesspatton/lazytest/engine"
 	"github.com/jesspatton/lazytest/filesystem"
 )
+
+// StatusIcon maps a TestStatus to its display emoji.
+func StatusIcon(status engine.TestStatus) string {
+	switch status {
+	case engine.StatusRunning:
+		return "⏳"
+	case engine.StatusPass:
+		return "✅"
+	case engine.StatusFail:
+		return "❌"
+	default:
+		return "📄"
+	}
+}
 
 func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	var explorerView strings.Builder
@@ -74,15 +87,7 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 		}
 	} else {
 		// Render Watched / Affected Suite list
-		var tabList []string
-		var emptyHint string
-		if m.engine.IsSmartMode() {
-			tabList = m.engine.GetAffectedSuite()
-			emptyHint = "No tests affected yet.\nEdit a source file to trigger Smart Mode."
-		} else {
-			tabList = m.engine.GetWatchedFiles()
-			emptyHint = "No watched files.\nPress 'w' on a file to watch it."
-		}
+		tabList, emptyHint := m.getTabList()
 
 		if len(tabList) == 0 {
 			explorerView.WriteString(emptyHint)
@@ -104,25 +109,18 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 
 			for i := start; i < end; i++ {
 				path := tabList[i]
-				name := path[strings.LastIndex(path, string(os.PathSeparator))+1:]
+				name := filesystem.NodeFromPath(path).Name
 
 				cursor := " "
 				if m.watchedCursor == i {
 					cursor = ">"
 				}
 
-				// Get status for this file
+				// Get status icon for this file
 				status, ok := m.engine.GetNodeStatus(path)
 				icon := "📄"
 				if ok {
-					switch status {
-					case engine.StatusRunning:
-						icon = "⏳"
-					case engine.StatusPass:
-						icon = "✅"
-					case engine.StatusFail:
-						icon = "❌"
-					}
+					icon = StatusIcon(status)
 				}
 
 				line := fmt.Sprintf("%s %s %s", cursor, icon, name)
@@ -253,20 +251,9 @@ func (m Model) getNodeIcon(node *filesystem.Node) string {
 	if node.IsDir {
 		return "📁"
 	}
-
 	status, ok := m.engine.GetNodeStatus(node.Path)
 	if !ok {
 		return "📄"
 	}
-
-	switch status {
-	case engine.StatusRunning:
-		return "⏳"
-	case engine.StatusPass:
-		return "✅"
-	case engine.StatusFail:
-		return "❌"
-	default:
-		return "📄"
-	}
+	return StatusIcon(status)
 }

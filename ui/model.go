@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -179,12 +178,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.activePane == PaneExplorer {
 			if m.activeTab == TabWatched {
 				// In Smart Mode the watched tab shows the Affected Suite list.
-				var tabList []string
-				if m.engine.IsSmartMode() {
-					tabList = m.engine.GetAffectedSuite()
-				} else {
-					tabList = m.engine.GetWatchedFiles()
-				}
+				tabList, _ := m.getTabList()
 				switch {
 				case key.Matches(msg, m.keys.Up):
 					if m.watchedCursor > 0 {
@@ -199,11 +193,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case key.Matches(msg, m.keys.Enter):
 					if m.watchedCursor < len(tabList) {
 						path := tabList[m.watchedCursor]
-						node := &filesystem.Node{
-							Path: path,
-							Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
-						}
-						return m, m.engine.TriggerTest(node)
+						return m, m.engine.TriggerTest(filesystem.NodeFromPath(path))
 					}
 				case key.Matches(msg, m.keys.ToggleWatch):
 					if !m.engine.IsSmartMode() && m.watchedCursor < len(tabList) {
@@ -404,12 +394,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		runningNode := m.engine.GetRunningNode()
 		if runningNode != nil {
 			if m.activeTab == TabWatched {
-				var tabList []string
-				if m.engine.IsSmartMode() {
-					tabList = m.engine.GetAffectedSuite()
-				} else {
-					tabList = m.engine.GetWatchedFiles()
-				}
+				tabList, _ := m.getTabList()
 				if m.watchedCursor < len(tabList) && tabList[m.watchedCursor] != runningNode.Path {
 					shouldShow = false
 				}
@@ -470,15 +455,7 @@ func (m *Model) syncViewportOutput() {
 	var content string
 
 	if m.activeTab == TabWatched {
-		var tabList []string
-		var emptyMsg string
-		if m.engine.IsSmartMode() {
-			tabList = m.engine.GetAffectedSuite()
-			emptyMsg = "No tests affected yet.\nEdit a source file to trigger Smart Mode."
-		} else {
-			tabList = m.engine.GetWatchedFiles()
-			emptyMsg = "No watched files.\nPress 'w' on a file to watch it."
-		}
+		tabList, emptyMsg := m.getTabList()
 		if m.watchedCursor < len(tabList) {
 			path := tabList[m.watchedCursor]
 			if out, ok := m.engine.GetTestOutput(path); ok && out != "" {
@@ -512,6 +489,15 @@ func (m *Model) syncViewportOutput() {
 	}
 
 	m.viewport.SetContent(m.wrapOutput(m.viewport.Width, content))
+}
+
+// getTabList returns the list of paths and an empty-state hint message for the
+// currently active tab, accounting for Smart Mode vs. Manual Watch Mode.
+func (m *Model) getTabList() ([]string, string) {
+	if m.engine.IsSmartMode() {
+		return m.engine.GetAffectedSuite(), "No tests affected yet.\nEdit a source file to trigger Smart Mode."
+	}
+	return m.engine.GetWatchedFiles(), "No watched files.\nPress 'w' on a file to watch it."
 }
 
 // View renders the UI based on the current state.

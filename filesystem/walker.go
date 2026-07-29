@@ -15,6 +15,15 @@ type Node struct {
 	Parent   *Node
 }
 
+// NodeFromPath constructs a lightweight Node from a raw absolute path.
+// The Name is set to the base filename (the segment after the last separator).
+func NodeFromPath(path string) *Node {
+	return &Node{
+		Path: path,
+		Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
+	}
+}
+
 // Walk traverses the root directory and builds a tree of test files
 func Walk(root string, excludes []string) (*Node, error) {
 	rootNode := &Node{
