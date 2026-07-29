@@ -14,6 +14,7 @@ While it defaults to **Jest**, LazyTest is **test-runner agnostic** and can be c
 *   **Zero-Touch Auto-Focus**: In Smart Mode, when a test fails, LazyTest automatically jumps to the failed test in the Affected Suite tab so you can immediately see the error output.
 *   **Suite Stats Badge**: In Smart Mode, a live stats badge appears above the output view showing progress (e.g., `⚡ SMART MODE | N Passed • N Failed • N Running`).
 *   **Smart Test Selection (Manual Mode)**: Use `a` to add tests related to currently changed source files (via `git diff`) to your watched list in one keypress.
+*   **Parallel Execution**: Run multiple tests concurrently to drastically speed up execution time. The concurrency limit intelligently defaults to half your CPU threads.
 *   **File Watching**: Automatically detects new test files and updates the tree in real-time.
 *   **Context Awareness**: Automatically finds the nearest `package.json` to run tests in the correct context (perfect for monorepos).
 *   **Status Indicators**: Visual feedback for running (⏳), passed (✅), and failed (❌) tests.
@@ -93,6 +94,7 @@ Create a `.lazytest.json` in your project root to customize behavior.
 
 **Supported Fields:**
 *   `command`: The global test command. Use `<path>` as a placeholder for the file path.
+*   `max_concurrent_tests`: Limit for how many tests can run simultaneously. Defaults to `runtime.NumCPU() / 2` (min 1).
 *   `overrides`: Specific commands for file patterns (useful for mixed environments or monorepos).
 *   `excludes`: Directories to hide from the explorer.
 
