@@ -201,8 +201,6 @@ func (g *Graph) GetAffectedDependents(path string) []string {
 	return dependents
 }
 
-
-
 // Internal helpers
 
 func (g *Graph) addPendingImport(importPath, dependent string, depType DependencyType) {

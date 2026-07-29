@@ -21,7 +21,7 @@ const (
 // State represents the core business state of the application.
 type State struct {
 	// Data
-	Tree    *filesystem.Node
+	Tree     *filesystem.Node
 	Watched  map[string]struct{}
 	Affected map[string]struct{}
 

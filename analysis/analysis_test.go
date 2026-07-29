@@ -518,9 +518,9 @@ func TestGraph_TSAlias(t *testing.T) {
 	}
 
 	files := map[string]string{
-		"src/utils.ts":       "export const util = 1;",
-		"src/api.ts":         "import { util } from '@/utils';",
-		"tests/api.test.ts":  "import { api } from '@/api';",
+		"src/utils.ts":      "export const util = 1;",
+		"src/api.ts":        "import { util } from '@/utils';",
+		"tests/api.test.ts": "import { api } from '@/api';",
 	}
 	for name, content := range files {
 		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(content), 0644); err != nil {
@@ -695,4 +695,3 @@ jest.setMock('./utils', {});
 		t.Errorf("Expected setmock.test.ts to have DepMocked for utils.ts")
 	}
 }
-

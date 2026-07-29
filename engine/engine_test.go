@@ -507,17 +507,17 @@ func TestConfigChangeHandling_SmartMode(t *testing.T) {
 func TestGetAffectedSuite_Sorting(t *testing.T) {
 	e := New("/tmp")
 
-	fail    := "/tmp/fail.test.js"
+	fail := "/tmp/fail.test.js"
 	running := "/tmp/running.test.js"
-	pass    := "/tmp/pass.test.js"
-	idle    := "/tmp/idle.test.js"
+	pass := "/tmp/pass.test.js"
+	idle := "/tmp/idle.test.js"
 
 	for _, p := range []string{pass, idle, running, fail} {
 		e.State.Affected[p] = struct{}{}
 	}
-	e.State.NodeStatus[fail]    = StatusFail
+	e.State.NodeStatus[fail] = StatusFail
 	e.State.NodeStatus[running] = StatusRunning
-	e.State.NodeStatus[pass]    = StatusPass
+	e.State.NodeStatus[pass] = StatusPass
 	// idle has no status set (StatusIdle / zero value)
 
 	suite := e.GetAffectedSuite()
@@ -577,7 +577,7 @@ func TestGetSuiteStats(t *testing.T) {
 	}
 
 	for _, p := range paths {
-		e.State.Affected[p.path]   = struct{}{}
+		e.State.Affected[p.path] = struct{}{}
 		e.State.NodeStatus[p.path] = p.status
 	}
 
@@ -597,17 +597,17 @@ func TestGetSuiteStats(t *testing.T) {
 func TestClearAffectedSuite(t *testing.T) {
 	e := New("/tmp")
 
-	fail    := "/tmp/fail.test.js"
+	fail := "/tmp/fail.test.js"
 	running := "/tmp/running.test.js"
-	pass    := "/tmp/pass.test.js"
-	idle    := "/tmp/idle.test.js"
+	pass := "/tmp/pass.test.js"
+	idle := "/tmp/idle.test.js"
 
 	for _, p := range []string{fail, running, pass, idle} {
 		e.State.Affected[p] = struct{}{}
 	}
-	e.State.NodeStatus[fail]    = StatusFail
+	e.State.NodeStatus[fail] = StatusFail
 	e.State.NodeStatus[running] = StatusRunning
-	e.State.NodeStatus[pass]    = StatusPass
+	e.State.NodeStatus[pass] = StatusPass
 
 	e.ClearAffectedSuite()
 
@@ -631,15 +631,15 @@ func TestRunSuiteFailures(t *testing.T) {
 
 	fail1 := "/tmp/a_fail.test.js"
 	fail2 := "/tmp/b_fail.test.js"
-	pass  := "/tmp/pass.test.js"
-	idle  := "/tmp/idle.test.js"
+	pass := "/tmp/pass.test.js"
+	idle := "/tmp/idle.test.js"
 
 	for _, p := range []string{fail1, fail2, pass, idle} {
 		e.State.Affected[p] = struct{}{}
 	}
 	e.State.NodeStatus[fail1] = StatusFail
 	e.State.NodeStatus[fail2] = StatusFail
-	e.State.NodeStatus[pass]  = StatusPass
+	e.State.NodeStatus[pass] = StatusPass
 
 	// Pin a running node so nothing fires immediately
 	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
@@ -698,7 +698,7 @@ func TestAffectedPopulatedOnEnqueue(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	sourceFile := filepath.Join(tmpDir, "utils.ts")
-	testFile   := filepath.Join(tmpDir, "utils.test.ts")
+	testFile := filepath.Join(tmpDir, "utils.test.ts")
 
 	if err := os.WriteFile(sourceFile, []byte("export const x = 1;"), 0644); err != nil {
 		t.Fatal(err)
@@ -720,4 +720,3 @@ func TestAffectedPopulatedOnEnqueue(t *testing.T) {
 		t.Errorf("Expected %s to be in State.Affected after enqueue, got %v", testFile, e.State.Affected)
 	}
 }
-
