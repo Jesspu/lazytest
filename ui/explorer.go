@@ -136,8 +136,9 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	// Fill remaining space to push search bar to bottom
 	currentView := explorerView.String()
 	currentHeight := lipgloss.Height(currentView)
-	if currentHeight < treeHeight {
-		currentView += strings.Repeat("\n", treeHeight-currentHeight)
+	targetHeight := paneHeight - searchHeight
+	if currentHeight < targetHeight {
+		currentView += strings.Repeat("\n", targetHeight-currentHeight)
 	}
 
 	if m.searchMode && m.activeTab == TabExplorer {

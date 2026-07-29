@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -65,6 +66,11 @@ type Model struct {
 	keys KeyMap
 	help help.Model
 
+	// Mouse State
+	lastClickTime time.Time
+	lastClickX    int
+	lastClickY    int
+
 	// Data / Dependencies
 	engine    *engine.Engine
 	flatNodes []DisplayNode
@@ -96,7 +102,10 @@ func NewModel(eng *engine.Engine) Model {
 
 // Init initializes the Bubbletea program.
 func (m Model) Init() tea.Cmd {
-	return m.engine.Init()
+	return tea.Batch(
+		m.engine.Init(),
+		tea.EnableMouseCellMotion,
+	)
 }
 
 // View renders the UI based on the current state.

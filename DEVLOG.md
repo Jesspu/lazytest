@@ -3,6 +3,7 @@
 This log tracks the implementation of major features and structural changes based on the project plans.
 
 ### 2026-07-28
+- **Mouse Support**: Implemented comprehensive mouse support for pane selection, tab switching, double-click test execution, and native scrolling, utilizing proper layout margin coordinate translation.
 - **Codebase Review & Refactoring**: Split `engine/engine.go` and `ui/model.go` into multiple focused files, eliminating duplication and extracting sync, search, and badge concerns.
 - **Smart Mode UX / Phase 1 & 2**: Overhauled the Smart Mode UI to include the Affected Suite tab, live suite stats badge, zero-touch auto-focus on failures, and dynamic keybindings.
 - **Cursor Output Sync**: Centralized output rendering logic, ensuring the viewport accurately reflects the currently selected file or active test.

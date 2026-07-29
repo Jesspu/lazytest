@@ -24,6 +24,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	case tea.KeyMsg:
 		// Handle global keys (except when in search mode, some keys might be overridden)
 		if !m.searchMode {
