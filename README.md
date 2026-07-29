@@ -10,8 +10,10 @@ While it defaults to **Jest**, LazyTest is **test-runner agnostic** and can be c
 
 *   **Vim-style Navigation**: Navigate your file tree with `j`, `k`, `h`, `l`.
 *   **Instant Feedback**: Real-time output streaming with ANSI color support.
-*   **Smart Mode (Auto-Run)**: Toggle a persistent Smart Mode with `s`. When active, any file change automatically queues every transitively-affected test — no manual watching required. A `[SMART MODE]` badge appears in the footer.
-*   **Smart Test Selection**: Use `a` to add tests related to currently changed source files (via `git diff`) to your watched list in one keypress.
+*   **Smart Mode (Auto-Run)**: Toggle a persistent Smart Mode with `s`. When active, any file change automatically queues every transitively-affected test — no manual watching required. The Watched tab is replaced by an "Affected Suite" tab that is dynamically sorted by status (Fail → Running → Pass).
+*   **Zero-Touch Auto-Focus**: In Smart Mode, when a test fails, LazyTest automatically jumps to the failed test in the Affected Suite tab so you can immediately see the error output.
+*   **Suite Stats Badge**: In Smart Mode, a live stats badge appears above the output view showing progress (e.g., `⚡ SMART MODE | N Passed • N Failed • N Running`).
+*   **Smart Test Selection (Manual Mode)**: Use `a` to add tests related to currently changed source files (via `git diff`) to your watched list in one keypress.
 *   **File Watching**: Automatically detects new test files and updates the tree in real-time.
 *   **Context Awareness**: Automatically finds the nearest `package.json` to run tests in the correct context (perfect for monorepos).
 *   **Status Indicators**: Visual feedback for running (⏳), passed (✅), and failed (❌) tests.
@@ -61,10 +63,11 @@ mv lazytest /usr/local/bin/
 | `k` / `↑` | Move cursor up |
 | `Enter` | Run the selected test file |
 | `Tab` | Switch between File Explorer and Output panes |
-| `s` | **Toggle Smart Mode**: Automatically queue all tests affected by file changes (no manual watching needed). Badge shows `[SMART MODE]` when active. |
-| `a` | **Add Related**: Watch tests related to git-changed source files (one-time action, Manual Mode) |
+| `s` | **Toggle Smart Mode**: Automatically queue all tests affected by file changes. The footer badge updates and keybinding labels dynamically swap based on mode. |
+| `a` | **Add Related (Manual Mode)** / **Run Suite (Smart Mode)**: Add tests related to git diffs, or manually run the entire affected suite. |
+| `f` | **Run Failures**: (Smart Mode only) Re-run only the failed tests in the affected suite. |
 | `r` | Re-run the last executed test |
-| `R` | Refresh file tree and clear test states |
+| `R` | Refresh file tree |
 | `/` | Enter Search Mode |
 | `n` | Next Search Match |
 | `N` | Previous Search Match |
@@ -72,7 +75,7 @@ mv lazytest /usr/local/bin/
 | `]` | Next Tab |
 | `[` | Previous Tab |
 | `w` | Toggle Watch Mode for selected file |
-| `W` | Clear all Watched Files |
+| `W` | **Clear Watched (Manual Mode)** / **Clear Suite (Smart Mode)**: Clear all manually watched files or clear the affected suite. |
 | `?` | Toggle Help Menu |
 | `q` / `Ctrl+C` | Quit |
 
