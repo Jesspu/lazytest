@@ -9,7 +9,7 @@ import (
 func TestRunner(t *testing.T) {
 	t.Run("Success", func(t *testing.T) {
 		r := NewRunner()
-		r.Run("echo", []string{"hello"}, ".")
+		r.Run("echo", []string{"hello"}, ".", "test")
 
 		var output []string
 		var status *StatusUpdate
@@ -22,7 +22,7 @@ func TestRunner(t *testing.T) {
 			case update := <-r.Updates:
 				switch u := update.(type) {
 				case OutputUpdate:
-					output = append(output, string(u))
+					output = append(output, u.Content)
 				case StatusUpdate:
 					status = &u
 					done = true
@@ -49,7 +49,7 @@ func TestRunner(t *testing.T) {
 	t.Run("Failure", func(t *testing.T) {
 		r := NewRunner()
 		// Run a command that fails (exit 1)
-		r.Run("sh", []string{"-c", "exit 1"}, ".")
+		r.Run("sh", []string{"-c", "exit 1"}, ".", "test")
 
 		var status *StatusUpdate
 		timeout := time.After(2 * time.Second)
@@ -75,12 +75,12 @@ func TestRunner(t *testing.T) {
 	t.Run("Kill", func(t *testing.T) {
 		r := NewRunner()
 		// Run a long running command
-		r.Run("sleep", []string{"2"}, ".")
+		r.Run("sleep", []string{"2"}, ".", "test")
 
 		// Give it a moment to start
 		time.Sleep(100 * time.Millisecond)
 
-		r.Kill()
+		r.Kill("test")
 
 		var status *StatusUpdate
 		timeout := time.After(2 * time.Second)
@@ -106,13 +106,13 @@ func TestRunner(t *testing.T) {
 	t.Run("Concurrent Run", func(t *testing.T) {
 		r := NewRunner()
 		// Start first command
-		r.Run("sleep", []string{"2"}, ".")
+		r.Run("sleep", []string{"2"}, ".", "test1")
 
 		// Give it a moment to start
 		time.Sleep(100 * time.Millisecond)
 
 		// Start second command immediately
-		r.Run("echo", []string{"second"}, ".")
+		r.Run("echo", []string{"second"}, ".", "test2")
 
 		// We expect the first command to be cancelled (killed) and the second to finish successfully
 		// However, since they share the Updates channel, we might see updates from both.
@@ -126,7 +126,7 @@ func TestRunner(t *testing.T) {
 			select {
 			case update := <-r.Updates:
 				if out, ok := update.(OutputUpdate); ok {
-					if strings.Contains(string(out), "second") {
+					if strings.Contains(out.Content, "second") {
 						foundSecond = true
 						// We can stop once we verify the second command ran
 						return
@@ -156,7 +156,7 @@ func TestRunner(t *testing.T) {
 		// However, for this test, checking if the output *contains* the base name of the temp dir is usually sufficient
 		// or we can just use the runner's Cwd argument and see if it respects it.
 
-		r.Run(cmd, args, tmpDir)
+		r.Run(cmd, args, tmpDir, "test")
 
 		var output []string
 		var status *StatusUpdate
@@ -168,7 +168,7 @@ func TestRunner(t *testing.T) {
 			case update := <-r.Updates:
 				switch u := update.(type) {
 				case OutputUpdate:
-					output = append(output, string(u))
+					output = append(output, u.Content)
 				case StatusUpdate:
 					status = &u
 					done = true
@@ -218,7 +218,7 @@ func TestRunner(t *testing.T) {
 	t.Run("Stderr Capture", func(t *testing.T) {
 		r := NewRunner()
 		// Write to stderr
-		r.Run("sh", []string{"-c", "echo 'some error' >&2"}, ".")
+		r.Run("sh", []string{"-c", "echo 'some error' >&2"}, ".", "test")
 
 		var output []string
 		var status *StatusUpdate
@@ -230,7 +230,7 @@ func TestRunner(t *testing.T) {
 			case update := <-r.Updates:
 				switch u := update.(type) {
 				case OutputUpdate:
-					output = append(output, string(u))
+					output = append(output, u.Content)
 				case StatusUpdate:
 					status = &u
 					done = true

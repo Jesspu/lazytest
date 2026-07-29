@@ -74,9 +74,9 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 			}
 			sort.Strings(testsToQueue)
 
-			e.State.CurrentOutput += fmt.Sprintf("\nConfig change detected (%s). Reloaded settings and re-queued tests.\n", filepath.Base(path))
-			if e.State.RunningNode != nil {
-				e.State.TestOutputs[e.State.RunningNode.Path] = e.State.CurrentOutput
+			msgStr := fmt.Sprintf("\nConfig change detected (%s). Reloaded settings and re-queued tests.\n", filepath.Base(path))
+			for nodePath := range e.State.RunningNodes {
+				e.State.TestOutputs[nodePath] += msgStr
 			}
 		} else {
 			// Update dependency graph
@@ -120,32 +120,26 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 		return nil
 
 	case runner.OutputUpdate:
-		e.State.CurrentOutput += string(msg) + "\n"
-		if e.State.RunningNode != nil {
-			e.State.TestOutputs[e.State.RunningNode.Path] = e.State.CurrentOutput
-		}
+		e.State.TestOutputs[msg.FilePath] += msg.Content + "\n"
 		return e.waitForUpdates
 
 	case runner.StatusUpdate:
-		if e.State.RunningNode != nil {
+		if _, exists := e.State.RunningNodes[msg.FilePath]; exists {
 			if msg.Err == nil {
-				e.State.NodeStatus[e.State.RunningNode.Path] = StatusPass
-				e.State.CurrentOutput += "\nPASS\n"
+				e.State.NodeStatus[msg.FilePath] = StatusPass
+				e.State.TestOutputs[msg.FilePath] += "\nPASS\n"
 			} else {
-				e.State.NodeStatus[e.State.RunningNode.Path] = StatusFail
-				e.State.CurrentOutput += fmt.Sprintf("\nFAIL: %v\n", msg.Err)
+				e.State.NodeStatus[msg.FilePath] = StatusFail
+				e.State.TestOutputs[msg.FilePath] += fmt.Sprintf("\nFAIL: %v\n", msg.Err)
 			}
-			e.State.TestOutputs[e.State.RunningNode.Path] = e.State.CurrentOutput
-			e.State.RunningNode = nil
+			delete(e.State.RunningNodes, msg.FilePath)
 		}
 
 		// Process queue
-		if len(e.State.Queue) > 0 {
-			nextPath := e.State.Queue[0]
-			e.State.Queue = e.State.Queue[1:]
-			return tea.Batch(e.waitForUpdates, e.TriggerTest(filesystem.NodeFromPath(nextPath)))
+		cmd := e.ProcessQueue()
+		if cmd != nil {
+			return tea.Batch(e.waitForUpdates, cmd)
 		}
-
 		return e.waitForUpdates
 	}
 

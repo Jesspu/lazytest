@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -86,7 +84,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				changedFiles, err := filesystem.GetChangedFiles(m.engine.State.RootPath)
 				if err != nil {
-					m.engine.State.CurrentOutput += fmt.Sprintf("Error getting changed files: %v\n", err)
+					// Silent error, no global output available
 				} else {
 					count := 0
 					for _, src := range changedFiles {
@@ -218,13 +216,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if !m.ready {
 			m.viewport = viewport.New(paneWidth, viewportHeight)
-			m.viewport.SetContent(m.wrapOutput(paneWidth, m.engine.State.CurrentOutput))
 			m.ready = true
 		} else {
 			m.viewport.Width = paneWidth
 			m.viewport.Height = viewportHeight
-			m.viewport.SetContent(m.wrapOutput(paneWidth, m.engine.GetCurrentOutput()))
 		}
+		m.syncViewportOutput()
 
 	case engine.TreeLoadedMsg:
 		m.flatNodes = flattenNodes(m.engine.GetTree())
@@ -237,22 +234,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case runner.OutputUpdate:
 		shouldShow := true
-		runningNode := m.engine.GetRunningNode()
-		if runningNode != nil {
-			if m.activeTab == TabWatched {
-				tabList, _ := m.getTabList()
-				if m.watchedCursor < len(tabList) && tabList[m.watchedCursor] != runningNode.Path {
-					shouldShow = false
-				}
-			} else if m.activeTab == TabExplorer {
-				if m.cursor < len(m.flatNodes) && m.flatNodes[m.cursor].Path != runningNode.Path {
-					shouldShow = false
-				}
+		if m.activeTab == TabWatched {
+			tabList, _ := m.getTabList()
+			if m.watchedCursor < len(tabList) && tabList[m.watchedCursor] != msg.FilePath {
+				shouldShow = false
+			}
+		} else if m.activeTab == TabExplorer {
+			if m.cursor < len(m.flatNodes) && m.flatNodes[m.cursor].Path != msg.FilePath {
+				shouldShow = false
 			}
 		}
 
 		if shouldShow {
-			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, m.engine.GetCurrentOutput()))
+			out, _ := m.engine.GetTestOutput(msg.FilePath)
+			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
 			m.viewport.GotoBottom()
 		}
 		return m, tea.Batch(cmds...)

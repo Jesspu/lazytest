@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 // Config holds the configuration for the test runner.
 type Config struct {
-	Command   string     `json:"command"`
-	Overrides []Override `json:"overrides,omitempty"`
-	Excludes  []string   `json:"excludes,omitempty"`
+	Command            string     `json:"command"`
+	MaxConcurrentTests int        `json:"max_concurrent_tests,omitempty"`
+	Overrides          []Override `json:"overrides,omitempty"`
+	Excludes           []string   `json:"excludes,omitempty"`
 }
 
 // Override defines a custom command for a specific file pattern.
@@ -41,8 +43,14 @@ func GetExecutionRoot(testFilePath string) (string, error) {
 // LoadConfig looks for .lazytest.json starting from root and walking up.
 // If not found, returns default config.
 func LoadConfig(root string) Config {
+	defaultConcurrency := runtime.NumCPU() / 2
+	if defaultConcurrency < 1 {
+		defaultConcurrency = 1
+	}
+
 	defaultConfig := Config{
-		Command: "npx jest <path> --colors",
+		Command:            "npx jest <path> --colors",
+		MaxConcurrentTests: defaultConcurrency,
 	}
 
 	dir := root
@@ -62,6 +70,9 @@ func LoadConfig(root string) Config {
 
 			if config.Command == "" {
 				config.Command = defaultConfig.Command
+			}
+			if config.MaxConcurrentTests <= 0 {
+				config.MaxConcurrentTests = defaultConfig.MaxConcurrentTests
 			}
 			return config
 		}

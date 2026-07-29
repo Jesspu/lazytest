@@ -107,8 +107,8 @@ func (e *Engine) enqueueNodes(nodes []*filesystem.Node) tea.Cmd {
 	for _, q := range e.State.Queue {
 		queuedSet[q] = struct{}{}
 	}
-	if e.State.RunningNode != nil {
-		queuedSet[e.State.RunningNode.Path] = struct{}{}
+	for runningPath := range e.State.RunningNodes {
+		queuedSet[runningPath] = struct{}{}
 	}
 
 	for _, node := range nodes {
@@ -118,10 +118,5 @@ func (e *Engine) enqueueNodes(nodes []*filesystem.Node) tea.Cmd {
 		}
 	}
 
-	if e.State.RunningNode == nil && len(e.State.Queue) > 0 {
-		nextPath := e.State.Queue[0]
-		e.State.Queue = e.State.Queue[1:]
-		return e.TriggerTest(filesystem.NodeFromPath(nextPath))
-	}
-	return nil
+	return e.ProcessQueue()
 }

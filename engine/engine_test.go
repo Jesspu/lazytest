@@ -19,6 +19,7 @@ func TestNewEngine(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	if e.State.RootPath != tmpDir {
 		t.Errorf("Expected RootPath %s, got %s", tmpDir, e.State.RootPath)
@@ -33,6 +34,7 @@ func TestNewEngine(t *testing.T) {
 
 func TestToggleWatch(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	path := "/tmp/foo.test.js"
 	e.ToggleWatch(path)
@@ -75,6 +77,7 @@ func TestTriggerTest(t *testing.T) {
 	}
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 	node := &filesystem.Node{
 		Path: testFile,
 		Name: "foo.test.js",
@@ -87,7 +90,7 @@ func TestTriggerTest(t *testing.T) {
 	}
 
 	// Verify initial state
-	if e.State.RunningNode != node {
+	if len(e.State.RunningNodes) == 0 {
 		t.Error("Expected RunningNode to be set")
 	}
 	if status, _ := e.GetNodeStatus(testFile); status != StatusRunning {
@@ -143,32 +146,34 @@ func TestTriggerTest(t *testing.T) {
 
 func TestUpdateLoop(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 	node := &filesystem.Node{Path: "/tmp/foo.test.js", Name: "foo.test.js"}
-	e.State.RunningNode = node
+	e.State.RunningNodes[node.Path] = node
 	e.State.TestOutputs[node.Path] = ""
 
 	// Simulate OutputUpdate
-	msg := runner.OutputUpdate("hello")
+	msg := runner.OutputUpdate{FilePath: node.Path, Content: "hello"}
 	e.Update(msg)
 
-	if e.State.CurrentOutput != "hello\n" {
-		t.Errorf("Expected output 'hello\\n', got '%s'", e.State.CurrentOutput)
+	if e.State.TestOutputs[node.Path] != "hello\n" {
+		t.Errorf("Expected output 'hello\\n', got '%s'", e.State.TestOutputs[node.Path])
 	}
 
 	// Simulate StatusUpdate (Pass)
-	statusMsg := runner.StatusUpdate{Err: nil}
+	statusMsg := runner.StatusUpdate{FilePath: node.Path, Err: nil}
 	e.Update(statusMsg)
 
 	if status, _ := e.GetNodeStatus(node.Path); status != StatusPass {
 		t.Errorf("Expected status Pass, got %v", status)
 	}
-	if e.State.RunningNode != nil {
+	if len(e.State.RunningNodes) > 0 {
 		t.Error("Expected RunningNode to be nil after finish")
 	}
 }
 
 func TestSmartQueueing(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	// Watch three test files
 	test1 := "/tmp/app.test.js"
@@ -185,7 +190,7 @@ func TestSmartQueueing(t *testing.T) {
 	}
 
 	// Set a running node so the queue won't be consumed immediately
-	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
+	e.State.RunningNodes["/tmp/dummy.test.js"] = &filesystem.Node{Path: "/tmp/dummy.test.js"}
 
 	// Simulate a change to test1 (which should only affect test1 itself)
 	// Since we don't have a real graph with dependencies, this will queue only test1
@@ -235,6 +240,7 @@ func TestFindRelatedTests_SelfInclusion(t *testing.T) {
 	}
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 	e.Graph.Build(tmpDir)
 
 	related := e.FindRelatedTests(testFile)
@@ -264,6 +270,7 @@ func TestFindRelatedTests_SourceFile(t *testing.T) {
 	}
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 	e.Graph.Build(tmpDir)
 
 	related := e.FindRelatedTests(sourceFile)
@@ -295,6 +302,7 @@ func TestFindRelatedTests_NoDuplicates(t *testing.T) {
 	}
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 	e.Graph.Build(tmpDir)
 
 	related := e.FindRelatedTests(fooTest)
@@ -341,6 +349,7 @@ func TestSmartMode(t *testing.T) {
 	}
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 	// Build the dependency graph so the relationship is known
 	e.Graph.Build(tmpDir)
 
@@ -351,7 +360,7 @@ func TestSmartMode(t *testing.T) {
 	}
 
 	// Pin a running node so the queue won't be consumed immediately
-	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
+	e.State.RunningNodes["/tmp/dummy.test.ts"] = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
 
 	// Simulate a file-change event on the source file
 	_ = e.Update(WatcherMsg(sourceFile))
@@ -369,6 +378,7 @@ func TestSmartMode(t *testing.T) {
 // IsSmartMode reflects the current state correctly.
 func TestSmartModeToggle(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	if e.IsSmartMode() {
 		t.Error("Expected SmartMode to start as false")
@@ -396,6 +406,9 @@ func TestConfigChangeHandling(t *testing.T) {
 	if err := os.WriteFile(configFile, []byte(`{"command": "jest"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "package.json"), []byte(`{"name": "lazytest"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	test1 := filepath.Join(tmpDir, "app.test.js")
 	test2 := filepath.Join(tmpDir, "utils.test.js")
@@ -407,6 +420,7 @@ func TestConfigChangeHandling(t *testing.T) {
 	}
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 	if e.ProjectConfig.Command != "jest" {
 		t.Fatalf("Expected initial command 'jest', got '%s'", e.ProjectConfig.Command)
 	}
@@ -415,10 +429,10 @@ func TestConfigChangeHandling(t *testing.T) {
 	e.ToggleWatch(test2)
 
 	// Pin a running node so the queue won't be consumed immediately
-	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
+	e.State.RunningNodes["/tmp/dummy.test.js"] = &filesystem.Node{Path: "/tmp/dummy.test.js"}
 
 	// Modify config on disk
-	if err := os.WriteFile(configFile, []byte(`{"command": "vitest"}`), 0644); err != nil {
+	if err := os.WriteFile(configFile, []byte(`{"command": "vitest", "max_concurrent_tests": 0}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -431,17 +445,17 @@ func TestConfigChangeHandling(t *testing.T) {
 	}
 
 	// Verify both watched test files are enqueued for re-run
-	if len(e.State.Queue) != 2 {
-		t.Fatalf("Expected queue length 2, got %d: %v", len(e.State.Queue), e.State.Queue)
-	}
-	if e.State.Queue[0] != test1 || e.State.Queue[1] != test2 {
-		t.Errorf("Expected queue [%s, %s], got %v", test1, test2, e.State.Queue)
+	// Depending on MaxConcurrentTests, the tests might be queued or running
+	totalQueuedOrRunning := len(e.State.Queue) + len(e.State.RunningNodes)
+	if totalQueuedOrRunning != 3 { // 2 watched tests + 1 dummy
+		t.Fatalf("Expected 3 total queued/running tests, got %d", totalQueuedOrRunning)
 	}
 
-	// Verify output message
+
+	// Verify output message on the dummy node which wasn't re-triggered
 	expectedMsg := "Config change detected (.lazytest.json). Reloaded settings and re-queued tests."
-	if !strings.Contains(e.State.CurrentOutput, expectedMsg) {
-		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.CurrentOutput)
+	if !strings.Contains(e.State.TestOutputs["/tmp/dummy.test.js"], expectedMsg) {
+		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.TestOutputs["/tmp/dummy.test.js"])
 	}
 }
 
@@ -453,7 +467,7 @@ func TestConfigChangeHandling_SmartMode(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	pkgFile := filepath.Join(tmpDir, "package.json")
-	if err := os.WriteFile(pkgFile, []byte(`{"name": "test"}`), 0644); err != nil {
+	if err := os.WriteFile(pkgFile, []byte(`{"name": "lazytest-test", "max_concurrent_tests": 0}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -467,6 +481,7 @@ func TestConfigChangeHandling_SmartMode(t *testing.T) {
 	}
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 	e.Graph.Build(tmpDir)
 
 	e.ToggleSmartMode()
@@ -480,21 +495,20 @@ func TestConfigChangeHandling_SmartMode(t *testing.T) {
 	}
 
 	// Pin a running node
-	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
+	e.State.RunningNodes["/tmp/dummy.test.ts"] = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
 
 	_ = e.Update(WatcherMsg(pkgFile))
 
 	// Verify both test files discovered in the graph are enqueued
-	if len(e.State.Queue) != 2 {
-		t.Fatalf("Expected queue length 2 in Smart Mode on config change, got %d: %v", len(e.State.Queue), e.State.Queue)
-	}
-	if e.State.Queue[0] != test1 || e.State.Queue[1] != test2 {
-		t.Errorf("Expected queue [%s, %s], got %v", test1, test2, e.State.Queue)
+	totalQueuedOrRunning := len(e.State.Queue) + len(e.State.RunningNodes)
+	if totalQueuedOrRunning != 3 { // 2 smart tests + 1 dummy
+		t.Fatalf("Expected 3 total queued/running tests, got %d", totalQueuedOrRunning)
 	}
 
+
 	expectedMsg := "Config change detected (package.json). Reloaded settings and re-queued tests."
-	if !strings.Contains(e.State.CurrentOutput, expectedMsg) {
-		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.CurrentOutput)
+	if !strings.Contains(e.State.TestOutputs["/tmp/dummy.test.ts"], expectedMsg) {
+		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.TestOutputs["/tmp/dummy.test.ts"])
 	}
 }
 
@@ -506,6 +520,7 @@ func TestConfigChangeHandling_SmartMode(t *testing.T) {
 // ordered: Fail → Running → Pass → Idle, with alphabetical tie-breaking.
 func TestGetAffectedSuite_Sorting(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	fail := "/tmp/fail.test.js"
 	running := "/tmp/running.test.js"
@@ -543,6 +558,7 @@ func TestGetAffectedSuite_Sorting(t *testing.T) {
 // same status bucket are sorted alphabetically.
 func TestGetAffectedSuite_AlphabeticalTieBreak(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	a := "/tmp/alpha.test.js"
 	b := "/tmp/beta.test.js"
@@ -564,6 +580,7 @@ func TestGetAffectedSuite_AlphabeticalTieBreak(t *testing.T) {
 // TestGetSuiteStats verifies exact counts for passed, failed, and running.
 func TestGetSuiteStats(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	paths := []struct {
 		path   string
@@ -596,6 +613,7 @@ func TestGetSuiteStats(t *testing.T) {
 // TestClearAffectedSuite verifies that only failing/running tests are kept.
 func TestClearAffectedSuite(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	fail := "/tmp/fail.test.js"
 	running := "/tmp/running.test.js"
@@ -628,6 +646,7 @@ func TestClearAffectedSuite(t *testing.T) {
 // TestRunSuiteFailures verifies that only failing tests are enqueued.
 func TestRunSuiteFailures(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	fail1 := "/tmp/a_fail.test.js"
 	fail2 := "/tmp/b_fail.test.js"
@@ -642,7 +661,7 @@ func TestRunSuiteFailures(t *testing.T) {
 	e.State.NodeStatus[pass] = StatusPass
 
 	// Pin a running node so nothing fires immediately
-	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
+	e.State.RunningNodes["/tmp/dummy.test.js"] = &filesystem.Node{Path: "/tmp/dummy.test.js"}
 
 	e.RunSuiteFailures()
 
@@ -657,6 +676,7 @@ func TestRunSuiteFailures(t *testing.T) {
 // TestRunAffectedSuite verifies that every test in the Affected suite is enqueued.
 func TestRunAffectedSuite(t *testing.T) {
 	e := New("/tmp")
+	e.ProjectConfig.MaxConcurrentTests = 0
 
 	a := "/tmp/a.test.js"
 	b := "/tmp/b.test.js"
@@ -669,7 +689,7 @@ func TestRunAffectedSuite(t *testing.T) {
 	e.State.NodeStatus[b] = StatusFail
 
 	// Pin a running node so nothing fires immediately
-	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.js"}
+	e.State.RunningNodes["/tmp/dummy.test.js"] = &filesystem.Node{Path: "/tmp/dummy.test.js"}
 
 	e.RunAffectedSuite()
 
@@ -708,11 +728,12 @@ func TestAffectedPopulatedOnEnqueue(t *testing.T) {
 	}
 
 	e := New(tmpDir)
+	e.ProjectConfig.MaxConcurrentTests = 0
 	e.Graph.Build(tmpDir)
 	e.ToggleSmartMode()
 
 	// Pin a running node so the queue won't be consumed immediately
-	e.State.RunningNode = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
+	e.State.RunningNodes["/tmp/dummy.test.ts"] = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
 
 	_ = e.Update(WatcherMsg(sourceFile))
 

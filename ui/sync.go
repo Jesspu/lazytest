@@ -55,7 +55,7 @@ func (m *Model) syncViewportOutput() {
 	}
 
 	if content == "" {
-		content = m.engine.GetCurrentOutput()
+		content = "Ready."
 	}
 
 	m.viewport.SetContent(m.wrapOutput(m.viewport.Width, content))

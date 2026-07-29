@@ -31,10 +31,9 @@ type State struct {
 	TestOutputs map[string]string
 
 	// Live State
-	RunningNode   *filesystem.Node
-	LastRunNode   *filesystem.Node
-	CurrentOutput string
-	RootPath      string
+	RunningNodes map[string]*filesystem.Node
+	LastRunNode  *filesystem.Node
+	RootPath     string
 
 	// Mode
 	SmartMode bool // If true, automatically queue all affected test files on file change
@@ -43,11 +42,12 @@ type State struct {
 // NewState creates a new State instance.
 func NewState(rootPath string) State {
 	return State{
-		RootPath:    rootPath,
-		NodeStatus:  make(map[string]TestStatus),
-		TestOutputs: make(map[string]string),
-		Watched:     make(map[string]struct{}),
-		Affected:    make(map[string]struct{}),
-		Queue:       make([]string, 0),
+		RootPath:     rootPath,
+		NodeStatus:   make(map[string]TestStatus),
+		TestOutputs:  make(map[string]string),
+		Watched:      make(map[string]struct{}),
+		Affected:     make(map[string]struct{}),
+		Queue:        make([]string, 0),
+		RunningNodes: make(map[string]*filesystem.Node),
 	}
 }

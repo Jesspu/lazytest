@@ -34,13 +34,7 @@ func (e *Engine) GetTree() *filesystem.Node {
 	return e.State.Tree
 }
 
-func (e *Engine) GetRunningNode() *filesystem.Node {
-	return e.State.RunningNode
-}
 
-func (e *Engine) GetCurrentOutput() string {
-	return e.State.CurrentOutput
-}
 
 func (e *Engine) IsWatched(path string) bool {
 	_, exists := e.State.Watched[path]

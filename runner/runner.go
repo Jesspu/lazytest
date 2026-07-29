@@ -12,41 +12,40 @@ import (
 
 // Runner manages the execution of test commands.
 type Runner struct {
-	mu      sync.Mutex
-	currCmd *exec.Cmd
-	cancel  context.CancelFunc
-	Updates chan Update // Single channel for ordered updates
+	mu          sync.Mutex
+	runningCmds map[string]context.CancelFunc
+	Updates     chan Update // Single channel for ordered updates
 }
 
 // Update is a marker interface for runner updates.
 type Update interface{}
 
 // OutputUpdate carries a line of output.
-type OutputUpdate string
+type OutputUpdate struct {
+	FilePath string
+	Content  string
+}
 
 // StatusUpdate carries the final result.
 type StatusUpdate struct {
-	Err error
+	FilePath string
+	Err      error
 }
 
 // NewRunner creates a new Runner instance.
 func NewRunner() *Runner {
 	return &Runner{
-		Updates: make(chan Update, 1024), // Buffered to prevent blocking
+		runningCmds: make(map[string]context.CancelFunc),
+		Updates:     make(chan Update, 1024), // Buffered to prevent blocking
 	}
 }
 
-// Run executes the test command. It kills any running command first.
-func (r *Runner) Run(command string, args []string, cwd string) {
+// Run executes the test command for a specific file.
+func (r *Runner) Run(command string, args []string, cwd string, filePath string) {
 	r.mu.Lock()
-	// Kill previous process if it exists
-	if r.cancel != nil {
-		r.cancel()
-	}
-
 	// Create new context
 	ctx, cancel := context.WithCancel(context.Background())
-	r.cancel = cancel
+	r.runningCmds[filePath] = cancel
 
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = cwd
@@ -57,27 +56,26 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "FORCE_COLOR=1", "CLICOLOR_FORCE=1")
 
-	r.currCmd = cmd
 	r.mu.Unlock()
 
 	// Setup pipes
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		r.Updates <- OutputUpdate(fmt.Sprintf("Error creating stdout pipe: %v", err))
-		r.Updates <- StatusUpdate{Err: err}
+		r.Updates <- OutputUpdate{FilePath: filePath, Content: fmt.Sprintf("Error creating stdout pipe: %v", err)}
+		r.Updates <- StatusUpdate{FilePath: filePath, Err: err}
 		return
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		r.Updates <- OutputUpdate(fmt.Sprintf("Error creating stderr pipe: %v", err))
-		r.Updates <- StatusUpdate{Err: err}
+		r.Updates <- OutputUpdate{FilePath: filePath, Content: fmt.Sprintf("Error creating stderr pipe: %v", err)}
+		r.Updates <- StatusUpdate{FilePath: filePath, Err: err}
 		return
 	}
 
 	// Start command
 	if err := cmd.Start(); err != nil {
-		r.Updates <- OutputUpdate(fmt.Sprintf("Error starting command: %v", err))
-		r.Updates <- StatusUpdate{Err: err}
+		r.Updates <- OutputUpdate{FilePath: filePath, Content: fmt.Sprintf("Error starting command: %v", err)}
+		r.Updates <- StatusUpdate{FilePath: filePath, Err: err}
 		return
 	}
 
@@ -86,11 +84,11 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		streamReader(stdout, r.Updates)
+		streamReader(stdout, filePath, r.Updates)
 	}()
 	go func() {
 		defer wg.Done()
-		streamReader(stderr, r.Updates)
+		streamReader(stderr, filePath, r.Updates)
 	}()
 
 	// Wait for command to finish
@@ -101,33 +99,26 @@ func (r *Runner) Run(command string, args []string, cwd string) {
 		wg.Wait()
 
 		r.mu.Lock()
-		// Only report status if this is still the current command
-		shouldReport := false
-		if r.currCmd == cmd {
-			r.currCmd = nil
-			r.cancel = nil
-			shouldReport = true
-		}
+		delete(r.runningCmds, filePath)
 		r.mu.Unlock()
 
-		if shouldReport {
-			r.Updates <- StatusUpdate{Err: err}
-		}
+		r.Updates <- StatusUpdate{FilePath: filePath, Err: err}
 	}()
 }
 
-func streamReader(r io.Reader, out chan<- Update) {
+func streamReader(r io.Reader, filePath string, out chan<- Update) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		out <- OutputUpdate(scanner.Text())
+		out <- OutputUpdate{FilePath: filePath, Content: scanner.Text()}
 	}
 }
 
-// Kill explicitly stops the current command
-func (r *Runner) Kill() {
+// Kill explicitly stops a specific running command
+func (r *Runner) Kill(filePath string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.cancel != nil {
-		r.cancel()
+	if cancel, exists := r.runningCmds[filePath]; exists {
+		cancel()
+		delete(r.runningCmds, filePath)
 	}
 }

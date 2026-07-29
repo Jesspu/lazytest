@@ -6,7 +6,7 @@ This document outlines the plan to implement parallel test execution in LazyTest
 - Allow multiple tests to run in parallel.
 - Limit the number of concurrent tests to prevent resource exhaustion.
 - Make the concurrency limit configurable via `.lazytest.json`.
-- Maintain UI responsiveness and correctly route output to the corresponding file view.
+- Maintain UI responsiveness and correctly route output to the corresponding test file.
 
 ## Proposed Changes
 
@@ -16,76 +16,85 @@ Add a `MaxConcurrentTests` field to the `Config` struct.
 
 ```go
 type Config struct {
-    Command            string `json:"command"`
-    MaxConcurrentTests int    `json:"max_concurrent_tests"`
+    Command            string     `json:"command"`
+    MaxConcurrentTests int        `json:"max_concurrent_tests"`
+    // ... existing fields
 }
 ```
 
-- Default `MaxConcurrentTests` to `1` (or a sensible default like `runtime.NumCPU() / 2`) if not specified.
+- Default `MaxConcurrentTests` to `runtime.NumCPU() / 2` (min 1) if not specified or `0`.
 
 ### 2. Runner Architecture (`runner/runner.go`)
 
-Refactor `Runner` to handle multiple concurrent processes.
+Refactor `Runner` to support executing multiple concurrent processes and identify output by file path.
+
+#### Message Types
+Update the message types to include the `FilePath` so the engine knows which test generated the update.
+
+```go
+type OutputUpdate struct {
+    FilePath string
+    Content  string
+}
+
+type StatusUpdate struct {
+    FilePath string
+    Err      error
+}
+```
 
 #### Struct Changes
 ```go
 type Runner struct {
     mu          sync.Mutex
     runningCmds map[string]context.CancelFunc // Map file path to cancel func
-    sem         chan struct{}                 // Semaphore for concurrency limit
-    Output      chan OutputMsg                // Channel to stream output
-    Status      chan StatusMsg                // Channel to report completion
-}
-
-type OutputMsg struct {
-    FilePath string
-    Content  string
-}
-
-type StatusMsg struct {
-    FilePath string
-    Err      error
+    Updates     chan Update                   // Single channel for ordered updates
 }
 ```
 
 #### Logic Changes
-- **`NewRunner(maxConcurrent int)`**: Initialize the semaphore channel with buffer size `maxConcurrent`.
+- **`NewRunner()`**: Initialize `runningCmds`.
 - **`Run(command string, args []string, cwd string, filePath string)`**:
-    - Acquire semaphore: `r.sem <- struct{}{}`.
-    - Start goroutine.
-    - Inside goroutine:
-        - Defer releasing semaphore: `<-r.sem`.
-        - Store cancel func in `runningCmds`.
-        - Execute command.
-        - Stream output wrapping it in `OutputMsg`.
-        - Send final status in `StatusMsg`.
-        - Remove from `runningCmds` on completion.
+    - Remove the code that cancels the previous command.
+    - Store the context cancel func in `runningCmds[filePath]`.
+    - Pass `filePath` to `streamReader` so it can wrap output in `OutputUpdate{FilePath, ...}`.
+    - Send `StatusUpdate{FilePath, ...}` upon completion.
+    - Remove from `runningCmds` on completion.
+- **`Kill(filePath string)`**: Add method to cancel a specific running test, replacing the existing `Kill()` which kills the current command.
 
-### 3. UI Integration (`ui/model.go`)
+### 3. Engine Architecture (`engine/state.go` & `engine/engine.go`)
 
-Update the UI to handle multiplexed output and status messages.
+Update the Engine to handle concurrency limits and state mapping for multiple running tests.
 
-- **`Update`**:
-    - Handle `OutputMsg`: Append content to `m.testOutputs[msg.FilePath]`. If `msg.FilePath` is the currently selected file in the "Watched" tab (or the active file in Explorer), update the viewport.
-    - Handle `StatusMsg`: Update `m.nodeStatus[msg.FilePath]`. If it's the current file, update the status icon/text.
+#### State Changes (`engine/state.go`)
+- Remove `RunningNode *filesystem.Node` and `CurrentOutput string`.
+- Add `RunningNodes map[string]*filesystem.Node` to track currently executing tests.
+- `TestOutputs` map already exists and will be updated directly per file path.
 
-### 4. User Interface
+#### Logic Changes (`engine/engine.go` & `engine/actions.go`)
+- **Queue Processing**: In `Update()` when processing `runner.StatusUpdate` or queuing new tests, pop from `e.State.Queue` up to `e.ProjectConfig.MaxConcurrentTests` and trigger them.
+- **Output Handling**: In `Update()` for `runner.OutputUpdate`, append to `e.State.TestOutputs[msg.FilePath]`.
+- **Status Handling**: In `Update()` for `runner.StatusUpdate`, update `e.State.NodeStatus[msg.FilePath]`, remove from `RunningNodes`, and process the queue.
+- **TriggerTest (`actions.go`)**: Update to add the node to `RunningNodes`, clear previous output in `TestOutputs`, and call `e.runner.Run(..., node.Path)`.
 
-- The "Watched" tab will need to show the status of each file (Running, Pass, Fail) dynamically.
-- Ideally, add a visual indicator for "Queued" if the semaphore is full.
+### 4. UI Integration
+
+- Ensure the UI (e.g. `ui/explorer.go`, `ui/sync.go`) correctly queries `engine.State.NodeStatus` and `engine.State.TestOutputs` to display the state and output for the selected file, as there is no longer a single global `CurrentOutput`.
 
 ## Implementation Steps
 
 1.  **Update Config**: Add `MaxConcurrentTests` to `runner/config.go`.
 2.  **Refactor Runner**:
-    - Change `Output` and `Status` channels to carry `FilePath`.
-    - Implement semaphore logic.
-    - Update `Run` method signature.
-3.  **Update UI**:
-    - Adapt to new `Runner` API.
-    - Handle multiplexed messages.
-    - Ensure viewport updates only when relevant data arrives.
-4.  **Verify**:
+    - Change `OutputUpdate` and `StatusUpdate` to a struct carrying `FilePath`.
+    - Update `Runner` to track multiple commands using a map.
+    - Update `Run` method signature and logic.
+3.  **Refactor Engine State**:
+    - Replace `RunningNode` and `CurrentOutput` with `RunningNodes` map.
+    - Update Engine's `Update` loop to handle the new `FilePath` mapping in updates.
+    - Implement concurrency limiting in Engine's queue processing logic.
+4.  **Refactor Engine Actions & UI**:
+    - Fix all compile errors in `actions.go` and `ui/` packages related to `RunningNode` and `CurrentOutput` removal.
+5.  **Verify**:
     - Run multiple watched files.
     - Verify they run in parallel (up to the limit).
     - Verify output is correctly routed.
