@@ -137,6 +137,20 @@ func LoadConfig(root string) Config {
 	}
 }
 
+// LoadConfigForPath resolves the config for a specific test file path.
+// When the file falls inside a recognized workspace package, that package's
+// config is returned. Otherwise it falls back to root-level LoadConfig.
+func LoadConfigForPath(testPath string, workspaces []Workspace) Config {
+	for _, ws := range workspaces {
+		if strings.HasPrefix(testPath, ws.Root+string(filepath.Separator)) ||
+			testPath == ws.Root {
+			return ws.Config
+		}
+	}
+	// Fallback: walk up from the test file's directory.
+	return LoadConfig(filepath.Dir(testPath))
+}
+
 // BuildCommandString constructs the final command string to execute.
 func BuildCommandString(template string, testPath string) (string, []string) {
 	// Simple replacement for MVP

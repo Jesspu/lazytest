@@ -19,6 +19,7 @@ type Engine struct {
 	watcher       *filesystem.Watcher
 	Graph         *analysis.Graph
 	ProjectConfig runner.Config
+	Workspaces    []runner.Workspace // Nil for single-package repos
 }
 
 // New creates a new Engine instance.
@@ -28,6 +29,7 @@ func New(rootPath string) *Engine {
 		runner:        runner.NewRunner(),
 		Graph:         analysis.NewGraphWithRoot(rootPath),
 		ProjectConfig: runner.LoadConfig(rootPath),
+		Workspaces:    runner.DiscoverWorkspaces(rootPath),
 	}
 	e.State.WelcomeMessage = e.generateWelcome()
 	return e
@@ -46,6 +48,10 @@ func (e *Engine) generateWelcome() string {
 
 	sb.WriteString(fmt.Sprintf("  ⌘  Command: %s\n", e.ProjectConfig.Command))
 	sb.WriteString(fmt.Sprintf("  ⚙  Concurrency: %d\n", e.ProjectConfig.MaxConcurrentTests))
+
+	if len(e.Workspaces) > 1 {
+		sb.WriteString(fmt.Sprintf("  📦 Workspaces: %d packages detected\n", len(e.Workspaces)))
+	}
 
 	sb.WriteString("\n  Press ? for help • Press Enter to run a test\n")
 	return sb.String()
@@ -74,8 +80,9 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 		var testsToQueue []string
 
 		if filesystem.IsConfigFile(path) {
-			// 1. Reload runner configuration
+			// 1. Reload runner configuration and workspace list
 			e.ProjectConfig = runner.LoadConfig(e.State.RootPath)
+			e.Workspaces = runner.DiscoverWorkspaces(e.State.RootPath)
 
 			// 2. Rebuild graph as paths/aliases might have changed (e.g. tsconfig.json)
 			e.Graph = analysis.NewGraphWithRoot(e.State.RootPath)

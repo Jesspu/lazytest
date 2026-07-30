@@ -13,14 +13,15 @@ type TestJob struct {
 }
 
 // PrepareJob encapsulates the logic to prepare a test execution.
-// It finds the execution root, loads the config, and builds the command.
-func PrepareJob(nodePath string) (*TestJob, error) {
+// It finds the execution root, resolves the per-package config (using the
+// workspace list for monorepo routing), and builds the command.
+func PrepareJob(nodePath string, workspaces []Workspace) (*TestJob, error) {
 	execRoot, err := GetExecutionRoot(nodePath)
 	if err != nil {
 		return nil, err
 	}
 
-	config := LoadConfig(execRoot)
+	config := LoadConfigForPath(nodePath, workspaces)
 	relToRoot, _ := filepath.Rel(execRoot, nodePath)
 
 	// Normalize path separators for matching

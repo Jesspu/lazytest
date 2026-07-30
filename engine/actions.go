@@ -20,7 +20,7 @@ func (e *Engine) TriggerTest(node *filesystem.Node) tea.Cmd {
 	// Track in affected suite regardless of mode
 	e.State.Affected[node.Path] = struct{}{}
 
-	job, err := runner.PrepareJob(node.Path)
+	job, err := runner.PrepareJob(node.Path, e.Workspaces)
 	if err != nil {
 		e.State.TestOutputs[node.Path] += "Error: Could not find package.json\n"
 		e.State.NodeStatus[node.Path] = StatusFail
