@@ -37,6 +37,9 @@ type State struct {
 
 	// Mode
 	SmartMode bool // If true, automatically queue all affected test files on file change
+
+	// UI
+	WelcomeMessage string // Shown in the output pane until the first test runs
 }
 
 // NewState creates a new State instance.

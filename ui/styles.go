@@ -27,4 +27,8 @@ var (
 	statusStyle = lipgloss.NewStyle().
 			Foreground(subtle).
 			Padding(0, 1)
+
+	welcomeStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Padding(1, 2)
 )

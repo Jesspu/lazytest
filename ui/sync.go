@@ -38,24 +38,36 @@ func (m *Model) syncViewportOutput() {
 		}
 	} else {
 		// TabExplorer
+		welcome := m.engine.State.WelcomeMessage
 		if m.cursor < len(m.flatNodes) {
 			node := m.flatNodes[m.cursor]
 			if !node.IsDir {
 				if out, ok := m.engine.GetTestOutput(node.Path); ok && out != "" {
 					content = out
+				} else if !m.engine.HasAnyOutput() && welcome != "" {
+					// No test has run yet — show the welcome banner.
+					content = welcomeStyle.Render(welcome)
 				} else if filesystem.IsTestFile(node.Name) {
 					content = "No output yet for this test file.\nPress <Enter> to run, 'w' to watch, or 's' for Smart Mode."
 				} else {
 					content = fmt.Sprintf("Source file: %s\nPress 'w' to watch or 's' for Smart Mode.", node.Name)
 				}
 			} else {
-				content = fmt.Sprintf("Directory: %s", node.Name)
+				if !m.engine.HasAnyOutput() && welcome != "" {
+					content = welcomeStyle.Render(welcome)
+				} else {
+					content = fmt.Sprintf("Directory: %s", node.Name)
+				}
 			}
 		}
 	}
 
 	if content == "" {
-		content = "Ready."
+		if welcome := m.engine.State.WelcomeMessage; welcome != "" && !m.engine.HasAnyOutput() {
+			content = welcomeStyle.Render(welcome)
+		} else {
+			content = "Ready."
+		}
 	}
 
 	m.viewport.SetContent(m.wrapOutput(m.viewport.Width, content))

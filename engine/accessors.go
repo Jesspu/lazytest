@@ -45,3 +45,8 @@ func (e *Engine) IsWatched(path string) bool {
 func (e *Engine) IsSmartMode() bool {
 	return e.State.SmartMode
 }
+
+// HasAnyOutput returns true if at least one test has produced output.
+func (e *Engine) HasAnyOutput() bool {
+	return len(e.State.TestOutputs) > 0
+}

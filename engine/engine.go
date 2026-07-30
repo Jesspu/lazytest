@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jesspatton/lazytest/analysis"
@@ -22,12 +23,32 @@ type Engine struct {
 
 // New creates a new Engine instance.
 func New(rootPath string) *Engine {
-	return &Engine{
+	e := &Engine{
 		State:         NewState(rootPath),
 		runner:        runner.NewRunner(),
 		Graph:         analysis.NewGraphWithRoot(rootPath),
 		ProjectConfig: runner.LoadConfig(rootPath),
 	}
+	e.State.WelcomeMessage = e.generateWelcome()
+	return e
+}
+
+// generateWelcome builds the startup banner shown in the output pane.
+func (e *Engine) generateWelcome() string {
+	var sb strings.Builder
+	sb.WriteString("  LazyTest v0.0.6\n\n")
+
+	if e.ProjectConfig.DetectedRunner != "" {
+		sb.WriteString(fmt.Sprintf("  ⚡ Auto-detected: %s\n", e.ProjectConfig.DetectedRunner))
+	} else {
+		sb.WriteString("  📄 Config: .lazytest.json\n")
+	}
+
+	sb.WriteString(fmt.Sprintf("  ⌘  Command: %s\n", e.ProjectConfig.Command))
+	sb.WriteString(fmt.Sprintf("  ⚙  Concurrency: %d\n", e.ProjectConfig.MaxConcurrentTests))
+
+	sb.WriteString("\n  Press ? for help • Press Enter to run a test\n")
+	return sb.String()
 }
 
 // Init initializes the engine's side effects.
