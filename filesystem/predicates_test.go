@@ -95,3 +95,89 @@ func TestIsConfigFile(t *testing.T) {
 		})
 	}
 }
+
+func TestIsSourceFileMjsCjs(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		want     bool
+	}{
+		{"mjs file", "foo.mjs", true},
+		{"cjs file", "foo.cjs", true},
+		{"ts file", "foo.ts", true},
+		{"md file", "README.md", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsSourceFile(tt.filename); got != tt.want {
+				t.Errorf("IsSourceFile(%q) = %v, want %v", tt.filename, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsTestFileMjsCjs(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		want     bool
+	}{
+		{"mjs test", "add.test.mjs", true},
+		{"mjs spec", "add.spec.mjs", true},
+		{"cjs test", "add.test.cjs", true},
+		{"cjs spec", "add.spec.cjs", true},
+		{"plain mjs", "add.mjs", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsTestFile(tt.filename); got != tt.want {
+				t.Errorf("IsTestFile(%q) = %v, want %v", tt.filename, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsTestFileByPath(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		// Suffix-based (existing behaviour preserved)
+		{"spec suffix", "/project/src/math.spec.ts", true},
+		{"test suffix", "/project/src/math.test.js", true},
+		// Directory-based — test/
+		{"test dir js", "/project/test/math.js", true},
+		{"test dir mjs", "/project/test/add.mjs", true},
+		{"test dir nested", "/project/test/unit/add.js", true},
+		// Directory-based — tests/
+		{"tests dir ts", "/project/tests/util.ts", true},
+		// Directory-based — __tests__/
+		{"__tests__ dir tsx", "/project/src/__tests__/comp.tsx", true},
+		// Helper exclusion
+		{"setup helper", "/project/test/setup.js", false},
+		{"helpers helper", "/project/test/helpers.ts", false},
+		{"underscore helper", "/project/test/_mocks.js", false},
+		{"fixtures subdir", "/project/test/fixtures/data.js", false},
+		{"mocks subdir", "/project/test/mocks/api.js", false},
+		// Compound helper names (substring match)
+		{"setupTest compound", "/project/test/setupTest.ts", false},
+		{"testHelper compound", "/project/test/testHelper.tsx", false},
+		{"mockFactory compound", "/project/test/mockFactory.ts", false},
+		// Non-source files inside test dir
+		{"json in test dir", "/project/test/config.json", false},
+		// Normal source files outside test dir
+		{"normal source", "/project/src/math.ts", false},
+		{"readme", "/project/test/README.md", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsTestFileByPath(tt.path); got != tt.want {
+				t.Errorf("IsTestFileByPath(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}

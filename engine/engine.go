@@ -63,7 +63,7 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 			// 3. Queue all watched tests (or all tests in Smart Mode) for re-execution
 			if e.State.SmartMode {
 				for p := range e.Graph.Forward {
-					if filesystem.IsTestFile(p) {
+					if filesystem.IsTestFileByPath(p) {
 						testsToQueue = append(testsToQueue, p)
 					}
 				}

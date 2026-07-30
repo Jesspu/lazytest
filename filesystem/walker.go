@@ -39,7 +39,7 @@ func Walk(root string, excludes []string) (*Node, error) {
 			continue
 		}
 
-		if IsTestFile(f.Filename) {
+		if IsTestFileByPath(f.Location) {
 			addPathToTree(rootNode, f.Location, root)
 		}
 	}

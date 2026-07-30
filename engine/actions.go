@@ -80,7 +80,7 @@ func (e *Engine) FindRelatedTests(path string) []string {
 	seen := make(map[string]bool)
 
 	// 1. Direct inclusion: if the changed path is itself a test file, include it first.
-	if filesystem.IsTestFile(path) {
+	if filesystem.IsTestFileByPath(path) {
 		tests = append(tests, path)
 		seen[path] = true
 	}
@@ -90,7 +90,7 @@ func (e *Engine) FindRelatedTests(path string) []string {
 	// the intermediate module, so no additional depType check is needed here.
 	dependents := e.Graph.GetAffectedDependents(path)
 	for _, dep := range dependents {
-		if !seen[dep] && filesystem.IsTestFile(dep) {
+		if !seen[dep] && filesystem.IsTestFileByPath(dep) {
 			tests = append(tests, dep)
 			seen[dep] = true
 		}
