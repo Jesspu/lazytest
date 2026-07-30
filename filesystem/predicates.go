@@ -28,14 +28,40 @@ func IsSourceFile(name string) bool {
 	return false
 }
 
+// configBasenames are exact-match config file names.
+var configBasenames = []string{
+	"package.json",
+	"tsconfig.json",
+	".lazytest.json",
+	"pnpm-workspace.yaml",
+	".babelrc",
+}
+
+// configPrefixes are prefix-match patterns for config files
+// that may have varying extensions (e.g., .js, .ts, .json, .yml).
+var configPrefixes = []string{
+	"vite.config.",
+	"vitest.config.",
+	"vitest.workspace.",
+	"jest.config.",
+	"babel.config.",
+	"webpack.config.",
+	"playwright.config.",
+	".mocharc.",
+}
+
 // IsConfigFile checks if a file is a configuration file that might affect tests.
 func IsConfigFile(name string) bool {
 	base := filepath.Base(name)
-	return base == "package.json" ||
-		base == "tsconfig.json" ||
-		base == ".lazytest.json" ||
-		strings.HasPrefix(base, "vite.config.") ||
-		strings.HasPrefix(base, "jest.config.") ||
-		strings.HasPrefix(base, "babel.config.") ||
-		strings.HasPrefix(base, "webpack.config.")
+	for _, exact := range configBasenames {
+		if base == exact {
+			return true
+		}
+	}
+	for _, prefix := range configPrefixes {
+		if strings.HasPrefix(base, prefix) {
+			return true
+		}
+	}
+	return false
 }

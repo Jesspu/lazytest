@@ -2,6 +2,9 @@
 
 This log tracks the implementation of major features and structural changes based on the project plans.
 
+### 2026-07-29
+- **Config File Awareness**: Refactored `IsConfigFile` in `filesystem/predicates.go` to a data-driven slice approach, extending recognition to `vitest.config.*`, `vitest.workspace.*`, `.mocharc.*`, `playwright.config.*`, `pnpm-workspace.yaml`, and `.babelrc`. These files now correctly trigger config reloads and test re-queues when changed.
+
 ### 2026-07-28
 - **Parallel Execution**: Refactored the engine and runner to support executing multiple tests concurrently based on a configurable limit, replacing the global output state with per-path stream multiplexing.
 - **Mouse Support**: Implemented comprehensive mouse support for pane selection, tab switching, double-click test execution, and native scrolling, utilizing proper layout margin coordinate translation.

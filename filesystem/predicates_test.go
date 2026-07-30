@@ -55,13 +55,36 @@ func TestIsConfigFile(t *testing.T) {
 		filename string
 		want     bool
 	}{
+		// Existing exact-match basenames
 		{"package json", "package.json", true},
 		{"tsconfig json", "tsconfig.json", true},
 		{"lazytest json", ".lazytest.json", true},
+		// New exact-match basenames
+		{"pnpm workspace yaml", "pnpm-workspace.yaml", true},
+		{"babelrc", ".babelrc", true},
+		// Existing prefix patterns
 		{"jest config js", "jest.config.js", true},
+		{"jest config ts", "jest.config.ts", true},
 		{"vite config ts", "vite.config.ts", true},
+		{"vite config js", "vite.config.js", true},
+		{"babel config js", "babel.config.js", true},
+		{"webpack config js", "webpack.config.js", true},
+		// New prefix patterns
+		{"vitest config ts", "vitest.config.ts", true},
+		{"vitest config js", "vitest.config.js", true},
+		{"vitest workspace ts", "vitest.workspace.ts", true},
+		{"vitest workspace js", "vitest.workspace.js", true},
+		{"playwright config ts", "playwright.config.ts", true},
+		{"playwright config js", "playwright.config.js", true},
+		{"mocharc yml", ".mocharc.yml", true},
+		{"mocharc json", ".mocharc.json", true},
+		{"mocharc js", ".mocharc.js", true},
+		// Full path — verify filepath.Base stripping
+		{"full path jest config", "/project/root/jest.config.ts", true},
+		// Non-config files
 		{"source file", "foo.ts", false},
 		{"readme", "README.md", false},
+		{"random json", "data.json", false},
 	}
 
 	for _, tt := range tests {
