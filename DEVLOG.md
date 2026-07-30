@@ -3,6 +3,7 @@
 This log tracks the implementation of major features and structural changes based on the project plans.
 
 ### 2026-07-29
+- **Auto-Detect Test Runner**: Added `DetectRunner` to `runner/config.go`, which reads `package.json` and identifies the project's test runner by inspecting `devDependencies` then `dependencies` in priority order (vitest → jest → mocha → playwright → node built-in). `LoadConfig` now calls this instead of hard-coding `npx jest`, and exposes the detected runner name via a new `Config.DetectedRunner` field for UI reporting. Explicit `.lazytest.json` configs continue to take precedence.
 - **Config File Awareness**: Refactored `IsConfigFile` in `filesystem/predicates.go` to a data-driven slice approach, extending recognition to `vitest.config.*`, `vitest.workspace.*`, `.mocharc.*`, `playwright.config.*`, `pnpm-workspace.yaml`, and `.babelrc`. These files now correctly trigger config reloads and test re-queues when changed.
 
 ### 2026-07-28

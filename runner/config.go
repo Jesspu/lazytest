@@ -9,12 +9,57 @@ import (
 	"strings"
 )
 
+// RunnerInfo holds the name and command template for a detected test runner.
+type RunnerInfo struct {
+	Name    string
+	Command string
+}
+
+// knownRunners defines the priority-ordered list of supported test runners.
+var knownRunners = []RunnerInfo{
+	{"vitest", "npx vitest run <path>"},
+	{"jest", "npx jest <path> --colors"},
+	{"mocha", "npx mocha <path>"},
+	{"@playwright/test", "npx playwright test <path>"},
+}
+
+// DetectRunner reads package.json at root and returns the first recognized test
+// runner found in devDependencies then dependencies. Falls back to Node's
+// built-in test runner when nothing is matched.
+func DetectRunner(root string) RunnerInfo {
+	pkgPath := filepath.Join(root, "package.json")
+	data, err := os.ReadFile(pkgPath)
+	if err != nil {
+		return RunnerInfo{"node", "node --test <path>"}
+	}
+
+	var pkg struct {
+		DevDependencies map[string]string `json:"devDependencies"`
+		Dependencies    map[string]string `json:"dependencies"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return RunnerInfo{"node", "node --test <path>"}
+	}
+
+	for _, runner := range knownRunners {
+		if _, ok := pkg.DevDependencies[runner.Name]; ok {
+			return runner
+		}
+		if _, ok := pkg.Dependencies[runner.Name]; ok {
+			return runner
+		}
+	}
+
+	return RunnerInfo{"node", "node --test <path>"}
+}
+
 // Config holds the configuration for the test runner.
 type Config struct {
 	Command            string     `json:"command"`
 	MaxConcurrentTests int        `json:"max_concurrent_tests,omitempty"`
 	Overrides          []Override `json:"overrides,omitempty"`
 	Excludes           []string   `json:"excludes,omitempty"`
+	DetectedRunner     string     `json:"-"` // Not serialized; set at load time
 }
 
 // Override defines a custom command for a specific file pattern.
@@ -41,39 +86,37 @@ func GetExecutionRoot(testFilePath string) (string, error) {
 }
 
 // LoadConfig looks for .lazytest.json starting from root and walking up.
-// If not found, returns default config.
+// If not found, auto-detects the runner from package.json via DetectRunner.
+// An explicit .lazytest.json always takes precedence over auto-detection.
 func LoadConfig(root string) Config {
 	defaultConcurrency := runtime.NumCPU() / 2
 	if defaultConcurrency < 1 {
 		defaultConcurrency = 1
 	}
 
-	defaultConfig := Config{
-		Command:            "npx jest <path> --colors",
-		MaxConcurrentTests: defaultConcurrency,
-	}
-
 	dir := root
 	for {
 		configFile := filepath.Join(dir, ".lazytest.json")
 		if _, err := os.Stat(configFile); err == nil {
-			// Found it
+			// Found explicit config — it always wins.
 			data, err := os.ReadFile(configFile)
 			if err != nil {
-				return defaultConfig
+				break
 			}
 
 			var config Config
 			if err := json.Unmarshal(data, &config); err != nil {
-				return defaultConfig
+				break
 			}
 
+			detected := DetectRunner(root)
 			if config.Command == "" {
-				config.Command = defaultConfig.Command
+				config.Command = detected.Command
 			}
 			if config.MaxConcurrentTests <= 0 {
-				config.MaxConcurrentTests = defaultConfig.MaxConcurrentTests
+				config.MaxConcurrentTests = defaultConcurrency
 			}
+			config.DetectedRunner = detected.Name
 			return config
 		}
 
@@ -85,7 +128,13 @@ func LoadConfig(root string) Config {
 		dir = parent
 	}
 
-	return defaultConfig
+	// No .lazytest.json found — auto-detect from package.json.
+	detected := DetectRunner(root)
+	return Config{
+		Command:            detected.Command,
+		DetectedRunner:     detected.Name,
+		MaxConcurrentTests: defaultConcurrency,
+	}
 }
 
 // BuildCommandString constructs the final command string to execute.

@@ -38,10 +38,10 @@ func TestPrepareJob(t *testing.T) {
 			t.Errorf("Expected root %s, got %s", tmpDir, job.Root)
 		}
 
-		// Default command is "npx jest <path> --colors"
+		// Default when package.json has no recognized runner is node --test <path>.
 		// Relative path from root to test file is src/foo.test.js
-		expectedCmd := "npx"
-		expectedArgsLen := 3 // jest, src/foo.test.js, --colors
+		expectedCmd := "node"
+		expectedArgsLen := 2 // --test, src/foo.test.js
 
 		if job.Command != expectedCmd {
 			t.Errorf("Expected command %s, got %s", expectedCmd, job.Command)
