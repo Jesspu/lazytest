@@ -3,7 +3,9 @@
 This log tracks the implementation of major features and structural changes based on the project plans.
 
 ### 2026-07-30
+- **E2E teatest Integration (Phase 2)**: Integrated Charmbracelet's `teatest` framework, added `Engine.Close()` and `Runner.KillAll()` for clean resource teardown, created `e2e/helper.go`, and verified setup with a sanity test.
 - **E2E Test Projects Infrastructure (Phase 1)**: Created test project fixtures (`single_repo_jest`, `single_repo_vitest`, `single_repo_mocha`, `monorepo_pnpm`) and `scripts/setup_test_projects.sh` bootstrap script for E2E testing.
+
 
 ### 2026-07-29
 - **Monorepo Workspace Awareness**: Implemented workspace discovery (`package.json`/`pnpm-workspace.yaml`), adding support for per-package configurations and test routing.

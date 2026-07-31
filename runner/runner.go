@@ -122,3 +122,14 @@ func (r *Runner) Kill(filePath string) {
 		delete(r.runningCmds, filePath)
 	}
 }
+
+// KillAll explicitly stops all currently running commands.
+func (r *Runner) KillAll() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for filePath, cancel := range r.runningCmds {
+		cancel()
+		delete(r.runningCmds, filePath)
+	}
+}
+

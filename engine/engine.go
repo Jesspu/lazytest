@@ -215,3 +215,14 @@ func (e *Engine) buildGraph() tea.Msg {
 	e.Graph.Build(e.State.RootPath)
 	return nil
 }
+
+// Close stops background routines like the file watcher and running processes.
+func (e *Engine) Close() {
+	if e.watcher != nil {
+		e.watcher.Close()
+	}
+	if e.runner != nil {
+		e.runner.KillAll()
+	}
+}
+
