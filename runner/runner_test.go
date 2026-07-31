@@ -126,11 +126,13 @@ func TestRunner(t *testing.T) {
 			select {
 			case update := <-r.Updates:
 				if out, ok := update.(OutputUpdate); ok {
+					t.Logf("Output update from %s: %s", out.FilePath, out.Content)
 					if strings.Contains(out.Content, "second") {
 						foundSecond = true
-						// We can stop once we verify the second command ran
 						return
 					}
+				} else if stat, ok := update.(StatusUpdate); ok {
+					t.Logf("Status update from %s: %v", stat.FilePath, stat.Err)
 				}
 			case <-timeout:
 				if !foundSecond {

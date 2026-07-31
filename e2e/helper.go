@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/exp/teatest"
 	"github.com/jesspatton/lazytest/engine"
 	"github.com/jesspatton/lazytest/ui"
@@ -34,6 +35,8 @@ func SetupTestEnv(t *testing.T, fixtureName string) (*teatest.TestModel, context
 	tm := teatest.NewTestModel(t, model, teatest.WithInitialTermSize(100, 30))
 
 	teardown := func() {
+		tm.Send(tea.QuitMsg{})
+		tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
 		eng.Close()
 	}
 
@@ -48,6 +51,25 @@ func WaitForText(t *testing.T, out io.Reader, expected string, timeout time.Dura
 		out,
 		func(bts []byte) bool {
 			return strings.Contains(string(bts), expected)
+		},
+		teatest.WithDuration(timeout),
+	)
+}
+
+// WaitForTexts blocks until the teatest output stream contains ALL expected strings or times out.
+func WaitForTexts(t *testing.T, out io.Reader, expected []string, timeout time.Duration) {
+	t.Helper()
+	teatest.WaitFor(
+		t,
+		out,
+		func(bts []byte) bool {
+			str := string(bts)
+			for _, exp := range expected {
+				if !strings.Contains(str, exp) {
+					return false
+				}
+			}
+			return true
 		},
 		teatest.WithDuration(timeout),
 	)

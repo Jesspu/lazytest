@@ -116,6 +116,9 @@ func LoadConfig(root string) Config {
 			if config.MaxConcurrentTests <= 0 {
 				config.MaxConcurrentTests = defaultConcurrency
 			}
+			if len(config.Excludes) == 0 {
+				config.Excludes = []string{"node_modules", ".git"}
+			}
 			config.DetectedRunner = detected.Name
 			return config
 		}
@@ -134,6 +137,7 @@ func LoadConfig(root string) Config {
 		Command:            detected.Command,
 		DetectedRunner:     detected.Name,
 		MaxConcurrentTests: defaultConcurrency,
+		Excludes:           []string{"node_modules", ".git"},
 	}
 }
 

@@ -3,6 +3,7 @@ package filesystem
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -44,8 +45,28 @@ func Walk(root string, excludes []string) (*Node, error) {
 		}
 	}
 
+	rootNode.Sort()
 	return rootNode, nil
 }
+
+// Sort recursively sorts the children of this node.
+// Directories come first, then files. Both are sorted alphabetically.
+func (n *Node) Sort() {
+	sort.Slice(n.Children, func(i, j int) bool {
+		a, b := n.Children[i], n.Children[j]
+		if a.IsDir && !b.IsDir {
+			return true
+		}
+		if !a.IsDir && b.IsDir {
+			return false
+		}
+		return a.Name < b.Name
+	})
+	for _, child := range n.Children {
+		child.Sort()
+	}
+}
+
 
 func shouldExclude(path, root string, excludes []string) bool {
 	if len(excludes) == 0 {

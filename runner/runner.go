@@ -40,9 +40,13 @@ func NewRunner() *Runner {
 	}
 }
 
-// Run executes the test command for a specific file.
 func (r *Runner) Run(command string, args []string, cwd string, filePath string) {
 	r.mu.Lock()
+	// Kill existing process for this file if it's already running
+	if cancel, exists := r.runningCmds[filePath]; exists {
+		cancel()
+	}
+	
 	// Create new context
 	ctx, cancel := context.WithCancel(context.Background())
 	r.runningCmds[filePath] = cancel
@@ -93,10 +97,10 @@ func (r *Runner) Run(command string, args []string, cwd string, filePath string)
 
 	// Wait for command to finish
 	go func() {
-		// Wait for process to exit first. This ensures pipes are closed.
-		err := cmd.Wait()
-		// Then wait for output streaming to finish
+		// Wait for output streaming to finish first
 		wg.Wait()
+		// Then wait for process to exit and close pipes
+		err := cmd.Wait()
 
 		r.mu.Lock()
 		delete(r.runningCmds, filePath)
