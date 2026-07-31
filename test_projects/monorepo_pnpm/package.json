@@ -1,0 +1,6 @@
+{
+  "name": "monorepo-pnpm-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for pnpm monorepo with multiple packages"
+}

@@ -3,3 +3,5 @@ debug.log
 lazytest
 test_project
 coverage.out
+test_projects/**/node_modules/
+test_projects/**/dist/

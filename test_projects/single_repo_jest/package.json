@@ -1,0 +1,12 @@
+{
+  "name": "single-repo-jest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test fixture for single repository with Jest",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
