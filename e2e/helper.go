@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"io"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -52,7 +53,7 @@ func WaitForText(t *testing.T, out io.Reader, expected string, timeout time.Dura
 		func(bts []byte) bool {
 			return strings.Contains(string(bts), expected)
 		},
-		teatest.WithDuration(timeout),
+		teatest.WithDuration(resolveTimeout(timeout)),
 	)
 }
 
@@ -71,6 +72,15 @@ func WaitForTexts(t *testing.T, out io.Reader, expected []string, timeout time.D
 			}
 			return true
 		},
-		teatest.WithDuration(timeout),
+		teatest.WithDuration(resolveTimeout(timeout)),
 	)
+}
+
+func resolveTimeout(defaultTimeout time.Duration) time.Duration {
+	if env := os.Getenv("LAZYTEST_E2E_TIMEOUT"); env != "" {
+		if parsed, err := time.ParseDuration(env); err == nil {
+			return parsed
+		}
+	}
+	return defaultTimeout
 }
