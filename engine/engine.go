@@ -82,27 +82,10 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 		return nil
 
 	case runner.OutputUpdate:
-		e.State.TestOutputs[msg.FilePath] += msg.Content + "\n"
-		return e.waitForUpdates
+		return e.handleOutputUpdate(msg)
 
 	case runner.StatusUpdate:
-		if _, exists := e.State.RunningNodes[msg.FilePath]; exists {
-			if msg.Err == nil {
-				e.State.NodeStatus[msg.FilePath] = StatusPass
-				e.State.TestOutputs[msg.FilePath] += "\nPASS\n"
-			} else {
-				e.State.NodeStatus[msg.FilePath] = StatusFail
-				e.State.TestOutputs[msg.FilePath] += fmt.Sprintf("\nFAIL: %v\n", msg.Err)
-			}
-			delete(e.State.RunningNodes, msg.FilePath)
-		}
-
-		// Process queue
-		cmd := e.ProcessQueue()
-		if cmd != nil {
-			return tea.Batch(e.waitForUpdates, cmd)
-		}
-		return e.waitForUpdates
+		return e.handleStatusUpdate(msg)
 	}
 
 	return nil
@@ -189,6 +172,31 @@ func (e *Engine) handleSourceChange(path string) tea.Cmd {
 	}
 
 	return tea.Batch(e.RefreshTree, e.enqueueNodes(nodes), e.waitForWatcherEvents)
+}
+
+func (e *Engine) handleOutputUpdate(msg runner.OutputUpdate) tea.Cmd {
+	e.State.TestOutputs[msg.FilePath] += msg.Content + "\n"
+	return e.waitForUpdates
+}
+
+func (e *Engine) handleStatusUpdate(msg runner.StatusUpdate) tea.Cmd {
+	if _, exists := e.State.RunningNodes[msg.FilePath]; exists {
+		if msg.Err == nil {
+			e.State.NodeStatus[msg.FilePath] = StatusPass
+			e.State.TestOutputs[msg.FilePath] += "\nPASS\n"
+		} else {
+			e.State.NodeStatus[msg.FilePath] = StatusFail
+			e.State.TestOutputs[msg.FilePath] += fmt.Sprintf("\nFAIL: %v\n", msg.Err)
+		}
+		delete(e.State.RunningNodes, msg.FilePath)
+	}
+
+	// Process queue
+	cmd := e.ProcessQueue()
+	if cmd != nil {
+		return tea.Batch(e.waitForUpdates, cmd)
+	}
+	return e.waitForUpdates
 }
 
 // Internal Commands
