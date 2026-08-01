@@ -115,6 +115,9 @@ func streamReader(r io.Reader, filePath string, out chan<- Update) {
 	for scanner.Scan() {
 		out <- OutputUpdate{FilePath: filePath, Content: scanner.Text()}
 	}
+	if err := scanner.Err(); err != nil {
+		out <- OutputUpdate{FilePath: filePath, Content: fmt.Sprintf("error reading output: %v", err)}
+	}
 }
 
 // Kill explicitly stops a specific running command
