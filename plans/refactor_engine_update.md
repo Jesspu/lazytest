@@ -21,7 +21,7 @@ The goal of this epic is to apply the **Extract Method** pattern to break down t
 ### 3. Extract Tree/Initialization Handlers
 - **Task:** Extract smaller handlers like `func (e *Engine) handleTreeLoaded(msg TreeLoadedMsg) tea.Cmd` and `func (e *Engine) handleWatcherReady(msg WatcherReadyMsg) tea.Cmd`.
 
-### 4. Refactor `engine.Update`
+### 4. Refactor `engine.Update` [DONE]
 - **Task:** Replace all inline logic in the `Update` switch statement with calls to the newly created handler methods. The switch statement should act purely as a dispatcher.
 
 ## Acceptance Criteria

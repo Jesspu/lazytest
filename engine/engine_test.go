@@ -770,3 +770,12 @@ func TestHandleWatcherReady(t *testing.T) {
 		t.Errorf("Expected e.watcher to be %v, got %v", w, e.watcher)
 	}
 }
+
+func TestUpdate_UnknownMsg(t *testing.T) {
+	e := New("/tmp")
+	type unknownMsg struct{}
+	cmd := e.Update(unknownMsg{})
+	if cmd != nil {
+		t.Errorf("Expected nil tea.Cmd for unknown message type, got %v", cmd)
+	}
+}
