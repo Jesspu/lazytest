@@ -3,7 +3,7 @@
 This log tracks the implementation of major features and structural changes based on the project plans.
 
 ### 2026-07-31
-- **Engine Refactoring**: Extracted file watcher, runner output, and test status event handling from `engine.Update` into `handleWatcherMsg`, `handleConfigChange`, `handleSourceChange`, `handleOutputUpdate`, and `handleStatusUpdate` helper methods on `Engine`.
+- **Engine Refactoring**: Extracted file watcher, runner output, test status, and tree/initialization event handling from `engine.Update` into `handleWatcherMsg`, `handleConfigChange`, `handleSourceChange`, `handleOutputUpdate`, `handleStatusUpdate`, `handleWatcherReady`, and `handleTreeLoaded` helper methods on `Engine`.
 - **Codebase Maintenance**: Resolved static analysis warnings by removing unused parameters in workspace and runner components.
 
 ### 2026-07-30

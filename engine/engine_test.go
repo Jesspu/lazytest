@@ -741,3 +741,32 @@ func TestAffectedPopulatedOnEnqueue(t *testing.T) {
 		t.Errorf("Expected %s to be in State.Affected after enqueue, got %v", testFile, e.State.Affected)
 	}
 }
+
+func TestHandleTreeLoaded(t *testing.T) {
+	e := New("/tmp")
+	tree := &filesystem.Node{Name: "root", Path: "/tmp", IsDir: true}
+	cmd := e.Update(TreeLoadedMsg(tree))
+	if cmd != nil {
+		t.Error("Expected handleTreeLoaded to return nil tea.Cmd")
+	}
+	if e.State.Tree != tree {
+		t.Errorf("Expected e.State.Tree to be %v, got %v", tree, e.State.Tree)
+	}
+}
+
+func TestHandleWatcherReady(t *testing.T) {
+	e := New("/tmp")
+	w, err := filesystem.NewWatcher("/tmp")
+	if err != nil {
+		t.Fatalf("Failed to create watcher: %v", err)
+	}
+	defer w.Close()
+
+	cmd := e.Update(WatcherReadyMsg{watcher: w})
+	if cmd == nil {
+		t.Error("Expected handleWatcherReady to return non-nil tea.Cmd")
+	}
+	if e.watcher != w {
+		t.Errorf("Expected e.watcher to be %v, got %v", w, e.watcher)
+	}
+}

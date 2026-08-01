@@ -71,15 +71,13 @@ func (e *Engine) Init() tea.Cmd {
 func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case WatcherReadyMsg:
-		e.watcher = msg.watcher
-		return e.waitForWatcherEvents
+		return e.handleWatcherReady(msg)
 
 	case WatcherMsg:
 		return e.handleWatcherMsg(string(msg))
 
 	case TreeLoadedMsg:
-		e.State.Tree = msg
-		return nil
+		return e.handleTreeLoaded(msg)
 
 	case runner.OutputUpdate:
 		return e.handleOutputUpdate(msg)
@@ -197,6 +195,16 @@ func (e *Engine) handleStatusUpdate(msg runner.StatusUpdate) tea.Cmd {
 		return tea.Batch(e.waitForUpdates, cmd)
 	}
 	return e.waitForUpdates
+}
+
+func (e *Engine) handleWatcherReady(msg WatcherReadyMsg) tea.Cmd {
+	e.watcher = msg.watcher
+	return e.waitForWatcherEvents
+}
+
+func (e *Engine) handleTreeLoaded(msg TreeLoadedMsg) tea.Cmd {
+	e.State.Tree = msg
+	return nil
 }
 
 // Internal Commands
