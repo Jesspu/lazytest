@@ -31,7 +31,7 @@ func DiscoverWorkspaces(projectRoot string) []Workspace {
 	dirs := expandGlobs(projectRoot, globs)
 	workspaces := make([]Workspace, 0, len(dirs))
 	for _, dir := range dirs {
-		ws := buildWorkspace(projectRoot, dir)
+		ws := buildWorkspace(dir)
 		workspaces = append(workspaces, ws)
 	}
 	return workspaces
@@ -119,6 +119,9 @@ func pnpmWorkspaceGlobs(root string) []string {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return nil
+	}
 	return globs
 }
 
@@ -154,7 +157,7 @@ func expandGlobs(root string, globs []string) []string {
 }
 
 // buildWorkspace constructs a Workspace for the given package directory.
-func buildWorkspace(projectRoot, pkgDir string) Workspace {
+func buildWorkspace(pkgDir string) Workspace {
 	name := packageName(pkgDir)
 	config := LoadConfig(pkgDir)
 	return Workspace{

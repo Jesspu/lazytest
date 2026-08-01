@@ -2,6 +2,9 @@
 
 This log tracks the implementation of major features and structural changes based on the project plans.
 
+### 2026-07-31
+- **Codebase Maintenance**: Resolved static analysis warnings by removing unused parameters in workspace and runner components.
+
 ### 2026-07-30
 - **Core E2E Test Suite (Phase 3)**: Implemented full E2E test coverage for major UI and Engine flows, resolving race conditions, file explorer determinism, and test process leaks to achieve over 70% codebase coverage.
 - **E2E teatest Integration (Phase 2)**: Integrated Charmbracelet's `teatest` framework, added `Engine.Close()` and `Runner.KillAll()` for clean resource teardown, created `e2e/helper.go`, and verified setup with a sanity test.
