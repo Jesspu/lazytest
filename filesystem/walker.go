@@ -11,26 +11,29 @@ import (
 type Node struct {
 	Name     string
 	Path     string
-	IsDir    bool
-	Children []*Node
-	Parent   *Node
+	IsDir       bool
+	Children    []*Node
+	ChildrenMap map[string]*Node
+	Parent      *Node
 }
 
 // NodeFromPath constructs a lightweight Node from a raw absolute path.
 // The Name is set to the base filename (the segment after the last separator).
 func NodeFromPath(path string) *Node {
 	return &Node{
-		Path: path,
-		Name: path[strings.LastIndex(path, string(os.PathSeparator))+1:],
+		Path:        path,
+		Name:        path[strings.LastIndex(path, string(os.PathSeparator))+1:],
+		ChildrenMap: make(map[string]*Node),
 	}
 }
 
 // Walk traverses the root directory and builds a tree of test files
 func Walk(root string, excludes []string) (*Node, error) {
 	rootNode := &Node{
-		Name:  filepath.Base(root),
-		Path:  root,
-		IsDir: true,
+		Name:        filepath.Base(root),
+		Path:        root,
+		IsDir:       true,
+		ChildrenMap: make(map[string]*Node),
 	}
 
 	fileListQueue := StreamFiles(root)
@@ -108,37 +111,88 @@ func addPathToTree(root *Node, path string, rootPath string) {
 	for i, part := range parts {
 		// If it's the last part, it's the file
 		if i == len(parts)-1 {
-			child := &Node{
-				Name:   part,
-				Path:   path,
-				IsDir:  false,
-				Parent: currentNode,
+			if _, exists := currentNode.ChildrenMap[part]; !exists {
+				child := &Node{
+					Name:        part,
+					Path:        path,
+					IsDir:       false,
+					Parent:      currentNode,
+					ChildrenMap: make(map[string]*Node),
+				}
+				currentNode.Children = append(currentNode.Children, child)
+				currentNode.ChildrenMap[part] = child
 			}
-			currentNode.Children = append(currentNode.Children, child)
 			return
 		}
 
-		// Check if directory node already exists
-		found := false
-		for _, child := range currentNode.Children {
-			if child.Name == part && child.IsDir {
-				currentNode = child
-				found = true
-				break
-			}
-		}
-
-		// If not found, create it
-		if !found {
+		// Check if directory node already exists in map
+		if child, exists := currentNode.ChildrenMap[part]; exists && child.IsDir {
+			currentNode = child
+		} else {
+			// If not found, create it
 			dirPath := filepath.Join(currentNode.Path, part)
 			newNode := &Node{
-				Name:   part,
-				Path:   dirPath,
-				IsDir:  true,
-				Parent: currentNode,
+				Name:        part,
+				Path:        dirPath,
+				IsDir:       true,
+				Parent:      currentNode,
+				ChildrenMap: make(map[string]*Node),
 			}
 			currentNode.Children = append(currentNode.Children, newNode)
+			currentNode.ChildrenMap[part] = newNode
 			currentNode = newNode
+		}
+	}
+}
+
+// AddNode adds a path incrementally to the tree and sorts the affected branch
+func (n *Node) AddNode(path string) {
+	// Re-use addPathToTree but with the current node as the root.
+	// Since we don't have the exact rootPath, we can just use the node's Path as rootPath.
+	if !strings.HasPrefix(path, n.Path) {
+		return
+	}
+	addPathToTree(n, path, n.Path)
+	// We might need to sort from the parent of the newly added node up to the root, or just re-sort the whole tree for simplicity, or just the current node. 
+	// The problem statement says: "When fsnotify reports a file change (Create, Remove, Rename), the engine should mutate the specific branch of the in-memory Node tree."
+	// Let's sort the tree after adding. Sorting the whole tree is fast enough if we don't do full traversal.
+	// We can just sort the branch. For simplicity, just sort the modified node's children in addPathToTree.
+	n.Sort()
+}
+
+// RemoveNode removes a path incrementally from the tree
+func (n *Node) RemoveNode(path string) {
+	if !strings.HasPrefix(path, n.Path) {
+		return
+	}
+	
+	relPath, err := filepath.Rel(n.Path, path)
+	if err != nil || relPath == "." {
+		return
+	}
+
+	parts := strings.Split(relPath, string(os.PathSeparator))
+	currentNode := n
+
+	for i, part := range parts {
+		if child, exists := currentNode.ChildrenMap[part]; exists {
+			if i == len(parts)-1 {
+				// Remove the child
+				delete(currentNode.ChildrenMap, part)
+				// Remove from Children slice
+				for j, c := range currentNode.Children {
+					if c.Name == part {
+						currentNode.Children = append(currentNode.Children[:j], currentNode.Children[j+1:]...)
+						break
+					}
+				}
+				// Clean up empty directories upwards (optional, but good for completeness)
+				// Not strictly necessary for functionality.
+				return
+			}
+			currentNode = child
+		} else {
+			break // Path not found
 		}
 	}
 }

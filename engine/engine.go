@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -153,8 +154,19 @@ func (e *Engine) handleConfigChange(path string) tea.Cmd {
 func (e *Engine) handleSourceChange(path string) tea.Cmd {
 	e.State.IsBuildingGraph = true
 
+	if e.State.Tree != nil {
+		if _, err := os.Stat(path); err == nil {
+			if filesystem.IsTestFileByPath(path) {
+				e.State.Tree.AddNode(path)
+			}
+		} else if os.IsNotExist(err) {
+			if filesystem.IsTestFileByPath(path) {
+				e.State.Tree.RemoveNode(path)
+			}
+		}
+	}
+
 	return tea.Batch(
-		e.RefreshTree,
 		e.waitForWatcherEvents,
 		func() tea.Msg {
 			// Update dependency graph
