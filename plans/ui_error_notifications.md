@@ -23,8 +23,9 @@ The goal of this epic is to introduce a non-blocking toast/notification system w
 - **Task:** Handle `ClearNotificationMsg` to reset the notification state fields.
 
 ### 5. Surface Existing Silent Errors
-- **Task:** Identify areas where errors are silently swallowed (e.g., `AddRelated` in `ui/update.go`, possible runner initialization failures).
-- **Task:** Refactor these blocks to return a `tea.Cmd` that emits a `NotificationMsg` with the underlying error details.
+- **Task:** Refactor `ui/update.go` around line 85 (`AddRelated` keybinding). Currently, `filesystem.GetChangedFiles` failure is explicitly swallowed (`// Silent error, no global output available`). This should return a `tea.Cmd` that emits a `NotificationMsg` (e.g., "Not a git repository" or similar git error).
+- **Task:** Refactor `filesystem/watcher.go` around line 139. Currently, `w.fsWatcher.Errors` is channeled to `log.Println`, which can corrupt the TUI and doesn't get bubbled up. Update the watcher to emit an `engine.WatcherErrorMsg` (or similar) which the engine can catch and convert into a `NotificationMsg`.
+- **Task:** Refactor these blocks to return or dispatch the newly created notification messages so the user is informed of background failures.
 
 ## Acceptance Criteria
 - A temporary, non-blocking notification appears in the UI when a background error occurs.

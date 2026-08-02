@@ -2,6 +2,9 @@
 
 This log tracks the implementation of major features and structural changes based on the project plans.
 
+### 2026-08-02
+- **UI Error Notification System**: Implemented a non-blocking toast notification system to surface background errors and subsystem failures in the TUI footer, refactored filesystem watcher error channels to prevent terminal output corruption, surfaced git execution failures in manual mode, added `--notify` CLI flag support, and added unit and E2E test coverage.
+
 ### 2026-07-31
 - **Engine Event Router Refactoring**: Refactored `engine.Update` into a pure event dispatcher by extracting file watcher, runner output, test status, and tree/initialization logic into dedicated handler methods on `Engine`.
 - **Codebase Maintenance**: Resolved static analysis warnings by addressing unhandled scanner errors and removing unused parameters in workspace and runner components.
