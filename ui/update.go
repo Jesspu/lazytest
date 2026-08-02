@@ -242,12 +242,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case runner.OutputUpdate:
 		shouldShow := true
-		if m.activeTab == TabWatched {
+		switch m.activeTab {
+		case TabWatched:
 			tabList, _ := m.getTabList()
 			if m.watchedCursor < len(tabList) && tabList[m.watchedCursor] != msg.FilePath {
 				shouldShow = false
 			}
-		} else if m.activeTab == TabExplorer {
+		case TabExplorer:
 			if m.cursor < len(m.flatNodes) && m.flatNodes[m.cursor].Path != msg.FilePath {
 				shouldShow = false
 			}

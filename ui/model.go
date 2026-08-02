@@ -134,9 +134,11 @@ func (m Model) View() string {
 	if m.engine.IsSmartMode() {
 		passed, failed, running := m.engine.GetSuiteStats()
 		badge := m.renderSuiteBadge(passed, failed, running)
-		outputView.WriteString(badge + "\n")
+		outputView.WriteString(badge)
+		outputView.WriteByte('\n')
 	} else {
-		outputView.WriteString(titleStyle.Render("OUTPUT") + "\n\n")
+		outputView.WriteString(titleStyle.Render("OUTPUT"))
+		outputView.WriteString("\n\n")
 	}
 
 	if !m.ready {

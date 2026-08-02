@@ -54,7 +54,8 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 	}
 
 	tabs := lipgloss.JoinHorizontal(lipgloss.Bottom, explorerTab, watchedTab)
-	explorerView.WriteString(tabs + "\n\n")
+	explorerView.WriteString(tabs)
+	explorerView.WriteString("\n\n")
 
 	// Calculate available height for the tree
 	// Calculate available height for the tree
@@ -125,10 +126,11 @@ func (m Model) renderExplorer(paneWidth, paneHeight int) string {
 
 				line := fmt.Sprintf("%s %s %s", cursor, icon, name)
 				if m.watchedCursor == i {
-					explorerView.WriteString(lipgloss.NewStyle().Foreground(highlight).Render(line) + "\n")
+					explorerView.WriteString(lipgloss.NewStyle().Foreground(highlight).Render(line))
 				} else {
-					explorerView.WriteString(line + "\n")
+					explorerView.WriteString(line)
 				}
+				explorerView.WriteByte('\n')
 			}
 		}
 	}
@@ -242,10 +244,11 @@ func (m Model) renderNode(b *strings.Builder, node DisplayNode, index int) {
 	line := fmt.Sprintf("%s %s%s%s %s", cursor, indent, watchIcon, icon, name)
 
 	if m.cursor == index {
-		b.WriteString(lipgloss.NewStyle().Foreground(highlight).Render(line) + "\n")
+		b.WriteString(lipgloss.NewStyle().Foreground(highlight).Render(line))
 	} else {
-		b.WriteString(line + "\n")
+		b.WriteString(line)
 	}
+	b.WriteByte('\n')
 }
 
 func (m Model) getNodeIcon(node *filesystem.Node) string {
