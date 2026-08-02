@@ -14,12 +14,13 @@ import (
 
 // Engine manages the application logic and side effects.
 type Engine struct {
-	State         State
-	runner        *runner.Runner
-	watcher       *filesystem.Watcher
-	Graph         *analysis.Graph
-	ProjectConfig runner.Config
-	Workspaces    []runner.Workspace // Nil for single-package repos
+	State               State
+	runner              *runner.Runner
+	watcher             *filesystem.Watcher
+	Graph               *analysis.Graph
+	ProjectConfig       runner.Config
+	Workspaces          []runner.Workspace // Nil for single-package repos
+	InitialNotification string
 }
 
 // New creates a new Engine instance.
@@ -59,12 +60,24 @@ func (e *Engine) generateWelcome() string {
 
 // Init initializes the engine's side effects.
 func (e *Engine) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		e.RefreshTree,
 		e.startWatcher,
 		e.buildGraph,
 		e.waitForUpdates,
-	)
+	}
+
+	if e.InitialNotification != "" {
+		msg := e.InitialNotification
+		cmds = append(cmds, func() tea.Msg {
+			return NotificationMsg{
+				Message: msg,
+				IsError: true,
+			}
+		})
+	}
+
+	return tea.Batch(cmds...)
 }
 
 // Update handles incoming messages and updates the engine state.
@@ -75,6 +88,9 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 
 	case WatcherMsg:
 		return e.handleWatcherMsg(string(msg))
+
+	case WatcherErrorMsg:
+		return e.handleWatcherError(msg)
 
 	case TreeLoadedMsg:
 		return e.handleTreeLoaded(msg)
@@ -94,6 +110,18 @@ func (e *Engine) handleWatcherMsg(path string) tea.Cmd {
 		return e.handleConfigChange(path)
 	}
 	return e.handleSourceChange(path)
+}
+
+func (e *Engine) handleWatcherError(msg WatcherErrorMsg) tea.Cmd {
+	return tea.Batch(
+		func() tea.Msg {
+			return NotificationMsg{
+				Message: fmt.Sprintf("Watcher error: %v", msg.Err),
+				IsError: true,
+			}
+		},
+		e.waitForWatcherEvents,
+	)
 }
 
 func (e *Engine) handleConfigChange(path string) tea.Cmd {
@@ -220,7 +248,10 @@ func (e *Engine) RefreshTree() tea.Msg {
 func (e *Engine) startWatcher() tea.Msg {
 	w, err := filesystem.NewWatcher(e.State.RootPath)
 	if err != nil {
-		return nil
+		return NotificationMsg{
+			Message: fmt.Sprintf("Failed to start file watcher: %v", err),
+			IsError: true,
+		}
 	}
 	return WatcherReadyMsg{watcher: w}
 }
@@ -229,11 +260,18 @@ func (e *Engine) waitForWatcherEvents() tea.Msg {
 	if e.watcher == nil {
 		return nil
 	}
-	eventPath, ok := <-e.watcher.Events
-	if !ok {
-		return nil
+	select {
+	case eventPath, ok := <-e.watcher.Events:
+		if !ok {
+			return nil
+		}
+		return WatcherMsg(eventPath)
+	case err, ok := <-e.watcher.Errors:
+		if !ok {
+			return nil
+		}
+		return WatcherErrorMsg{Err: err}
 	}
-	return WatcherMsg(eventPath)
 }
 
 func (e *Engine) waitForUpdates() tea.Msg {

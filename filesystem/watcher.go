@@ -1,7 +1,6 @@
 package filesystem
 
 import (
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +14,7 @@ import (
 type Watcher struct {
 	fsWatcher    *fsnotify.Watcher
 	Events       chan string // Signal to refresh the tree, carries the changed file path
+	Errors       chan error  // Channel for filesystem watcher errors
 	done         chan struct{}
 	root         string
 	mu           sync.Mutex
@@ -31,6 +31,7 @@ func NewWatcher(root string) (*Watcher, error) {
 	w := &Watcher{
 		fsWatcher:    fsWatcher,
 		Events:       make(chan string, 100), // Increased buffer to handle batch events
+		Errors:       make(chan error, 10),
 		done:         make(chan struct{}),
 		root:         root,
 		pendingPaths: make(map[string]struct{}),
@@ -136,7 +137,10 @@ func (w *Watcher) startLoop() {
 			if !ok {
 				return
 			}
-			log.Println("Watcher error:", err)
+			select {
+			case w.Errors <- err:
+			default:
+			}
 		}
 	}
 }

@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -84,7 +87,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				changedFiles, err := filesystem.GetChangedFiles(m.engine.State.RootPath)
 				if err != nil {
-					// Silent error, no global output available
+					return m, func() tea.Msg {
+						return engine.NotificationMsg{
+							Message: fmt.Sprintf("Failed to get changed files: %v", err),
+							IsError: true,
+						}
+					}
 				} else {
 					count := 0
 					for _, src := range changedFiles {
@@ -272,6 +280,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// After a test finishes, sync to show the final stored output for the
 		// currently selected file (respects cursor position).
 		m.syncViewportOutput()
+		return m, tea.Batch(cmds...)
+
+	case engine.NotificationMsg:
+		m.notificationID++
+		m.activeNotification = msg.Message
+		m.isNotificationError = msg.IsError
+		id := m.notificationID
+		cmds = append(cmds, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+			return engine.ClearNotificationMsg{ID: id}
+		}))
+		return m, tea.Batch(cmds...)
+
+	case engine.ClearNotificationMsg:
+		if msg.ID == m.notificationID {
+			m.activeNotification = ""
+			m.isNotificationError = false
+		}
 		return m, tea.Batch(cmds...)
 	}
 

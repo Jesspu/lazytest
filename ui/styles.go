@@ -31,4 +31,16 @@ var (
 	welcomeStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Padding(1, 2)
+
+	notificationInfoStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(lipgloss.AdaptiveColor{Light: "#3182CE", Dark: "#2B6CB0"}).
+			Bold(true).
+			Padding(0, 1)
+
+	notificationErrorStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(warning).
+			Bold(true).
+			Padding(0, 1)
 )

@@ -71,6 +71,11 @@ type Model struct {
 	lastClickX    int
 	lastClickY    int
 
+	// Notification State
+	activeNotification  string
+	isNotificationError bool
+	notificationID      int
+
 	// Data / Dependencies
 	engine    *engine.Engine
 	flatNodes []DisplayNode

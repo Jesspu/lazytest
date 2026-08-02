@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jesspatton/lazytest/engine"
@@ -18,8 +19,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	if len(os.Args) > 1 {
-		argPath := os.Args[1]
+	var initialNotify string
+	var positionalArgs []string
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if arg == "--notify" && i+1 < len(os.Args) {
+			initialNotify = os.Args[i+1]
+			i++
+		} else if !strings.HasPrefix(arg, "-") {
+			positionalArgs = append(positionalArgs, arg)
+		}
+	}
+
+	if len(positionalArgs) > 0 {
+		argPath := positionalArgs[0]
 		absPath, err := filepath.Abs(argPath)
 		if err != nil {
 			fmt.Printf("Invalid directory path: %v\n", err)
@@ -29,6 +42,9 @@ func main() {
 	}
 
 	eng := engine.New(targetDir)
+	if initialNotify != "" {
+		eng.InitialNotification = initialNotify
+	}
 	p := tea.NewProgram(ui.NewModel(eng), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Alas, there's been an error: %v", err)

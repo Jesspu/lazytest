@@ -14,3 +14,20 @@ type TreeLoadedMsg *filesystem.Node
 type WatcherReadyMsg struct {
 	watcher *filesystem.Watcher
 }
+
+// WatcherErrorMsg indicates an error from the filesystem watcher.
+type WatcherErrorMsg struct {
+	Err error
+}
+
+// NotificationMsg represents a temporary toast notification in the UI.
+type NotificationMsg struct {
+	Message string
+	IsError bool
+}
+
+// ClearNotificationMsg signals that a notification should be dismissed.
+type ClearNotificationMsg struct {
+	ID int
+}
+
