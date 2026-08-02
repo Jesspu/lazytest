@@ -3,6 +3,7 @@
 This log tracks the implementation of major features and structural changes based on the project plans.
 
 ### 2026-08-02
+- **Output Concatenation and UI Blocking Fix**: Refactored the engine's test output data structure to use string slices instead of continuous string concatenation, and implemented a UI debouncer to prevent terminal freezing during heavy test output streaming.
 - **UI Error Notification System**: Implemented a non-blocking toast notification system to surface background errors and subsystem failures in the TUI footer, refactored filesystem watcher error channels to prevent terminal output corruption, surfaced git execution failures in manual mode, added `--notify` CLI flag support, and added unit and E2E test coverage.
 - **UI Component Maintenance**: Refactored string concatenation in `WriteString` calls across UI components (`ui/explorer.go`, `ui/model.go`) and converted `m.activeTab` equality checks in `ui/update.go` to a tagged `switch` statement to resolve static analysis warnings.
 
