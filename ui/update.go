@@ -13,6 +13,9 @@ import (
 	"github.com/jesspatton/lazytest/runner"
 )
 
+// renderTickMsg is used to debounce UI renders during heavy output streaming.
+type renderTickMsg time.Time
+
 // Update handles incoming messages and updates the model state.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
@@ -254,11 +257,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if shouldShow {
-			out, _ := m.engine.GetTestOutput(msg.FilePath)
-			m.viewport.SetContent(m.wrapOutput(m.viewport.Width, out))
-			m.viewport.GotoBottom()
+		if shouldShow && !m.outputUpdateQueued {
+			m.outputUpdateQueued = true
+			cmds = append(cmds, tea.Tick(16*time.Millisecond, func(t time.Time) tea.Msg {
+				return renderTickMsg(t)
+			}))
 		}
+		return m, tea.Batch(cmds...)
+
+	case renderTickMsg:
+		m.outputUpdateQueued = false
+		m.syncViewportOutput()
+		m.viewport.GotoBottom()
 		return m, tea.Batch(cmds...)
 
 	case runner.StatusUpdate:

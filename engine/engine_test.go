@@ -149,14 +149,15 @@ func TestUpdateLoop(t *testing.T) {
 	e.ProjectConfig.MaxConcurrentTests = 0
 	node := &filesystem.Node{Path: "/tmp/foo.test.js", Name: "foo.test.js"}
 	e.State.RunningNodes[node.Path] = node
-	e.State.TestOutputs[node.Path] = ""
+	e.State.TestOutputs[node.Path] = []string{""}
 
 	// Simulate OutputUpdate
 	msg := runner.OutputUpdate{FilePath: node.Path, Content: "hello"}
 	e.Update(msg)
 
-	if e.State.TestOutputs[node.Path] != "hello\n" {
-		t.Errorf("Expected output 'hello\\n', got '%s'", e.State.TestOutputs[node.Path])
+	out, _ := e.GetTestOutput(node.Path)
+	if out != "hello\n" {
+		t.Errorf("Expected output 'hello\\n', got '%s'", out)
 	}
 
 	// Simulate StatusUpdate (Pass)
@@ -454,8 +455,9 @@ func TestConfigChangeHandling(t *testing.T) {
 
 	// Verify output message on the dummy node which wasn't re-triggered
 	expectedMsg := "Config change detected (.lazytest.json). Reloaded settings and re-queued tests."
-	if !strings.Contains(e.State.TestOutputs["/tmp/dummy.test.js"], expectedMsg) {
-		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.TestOutputs["/tmp/dummy.test.js"])
+	out, _ := e.GetTestOutput("/tmp/dummy.test.js")
+	if !strings.Contains(out, expectedMsg) {
+		t.Errorf("Expected output to contain %q, got %q", expectedMsg, out)
 	}
 }
 
@@ -507,8 +509,9 @@ func TestConfigChangeHandling_SmartMode(t *testing.T) {
 
 
 	expectedMsg := "Config change detected (package.json). Reloaded settings and re-queued tests."
-	if !strings.Contains(e.State.TestOutputs["/tmp/dummy.test.ts"], expectedMsg) {
-		t.Errorf("Expected output to contain %q, got %q", expectedMsg, e.State.TestOutputs["/tmp/dummy.test.ts"])
+	out, _ := e.GetTestOutput("/tmp/dummy.test.ts")
+	if !strings.Contains(out, expectedMsg) {
+		t.Errorf("Expected output to contain %q, got %q", expectedMsg, out)
 	}
 }
 

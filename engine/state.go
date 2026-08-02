@@ -28,7 +28,7 @@ type State struct {
 	// Test Execution State
 	Queue       []string
 	NodeStatus  map[string]TestStatus
-	TestOutputs map[string]string
+	TestOutputs map[string][]string
 
 	// Live State
 	RunningNodes map[string]*filesystem.Node
@@ -47,7 +47,7 @@ func NewState(rootPath string) State {
 	return State{
 		RootPath:     rootPath,
 		NodeStatus:   make(map[string]TestStatus),
-		TestOutputs:  make(map[string]string),
+		TestOutputs:  make(map[string][]string),
 		Watched:      make(map[string]struct{}),
 		Affected:     make(map[string]struct{}),
 		Queue:        make([]string, 0),

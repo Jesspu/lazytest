@@ -2,6 +2,7 @@ package engine
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/jesspatton/lazytest/filesystem"
 )
@@ -22,7 +23,10 @@ func (e *Engine) GetWatchedFiles() []string {
 
 func (e *Engine) GetTestOutput(path string) (string, bool) {
 	val, ok := e.State.TestOutputs[path]
-	return val, ok
+	if !ok {
+		return "", false
+	}
+	return strings.Join(val, ""), true
 }
 
 func (e *Engine) GetNodeStatus(path string) (TestStatus, bool) {

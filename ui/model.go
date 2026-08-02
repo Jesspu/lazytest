@@ -79,6 +79,9 @@ type Model struct {
 	// Data / Dependencies
 	engine    *engine.Engine
 	flatNodes []DisplayNode
+
+	// Output debouncing
+	outputUpdateQueued bool
 }
 
 // NewModel creates and initializes a new Model.

@@ -15,14 +15,14 @@ func (e *Engine) TriggerTest(node *filesystem.Node) tea.Cmd {
 	e.State.LastRunNode = node
 	
 	output := fmt.Sprintf("Running %s...\n", node.Name)
-	e.State.TestOutputs[node.Path] = output
+	e.State.TestOutputs[node.Path] = []string{output}
 	e.State.NodeStatus[node.Path] = StatusRunning
 	// Track in affected suite regardless of mode
 	e.State.Affected[node.Path] = struct{}{}
 
 	job, err := runner.PrepareJob(node.Path, e.Workspaces)
 	if err != nil {
-		e.State.TestOutputs[node.Path] += "Error: Could not find package.json\n"
+		e.State.TestOutputs[node.Path] = append(e.State.TestOutputs[node.Path], "Error: Could not find package.json\n")
 		e.State.NodeStatus[node.Path] = StatusFail
 		delete(e.State.RunningNodes, node.Path)
 		return nil
