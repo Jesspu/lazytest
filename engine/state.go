@@ -39,7 +39,8 @@ type State struct {
 	SmartMode bool // If true, automatically queue all affected test files on file change
 
 	// UI
-	WelcomeMessage string // Shown in the output pane until the first test runs
+	WelcomeMessage  string // Shown in the output pane until the first test runs
+	IsBuildingGraph bool   // Indicates if a graph build/update is in progress
 }
 
 // NewState creates a new State instance.

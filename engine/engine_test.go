@@ -7,9 +7,32 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/jesspatton/lazytest/filesystem"
 	"github.com/jesspatton/lazytest/runner"
 )
+
+// flushCmds recursively executes cmds to simulate the Bubbletea event loop for tests.
+func flushCmds(e *Engine, cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	res := cmd()
+	if res == nil {
+		return
+	}
+	switch v := res.(type) {
+	case tea.BatchMsg:
+		for _, cmdItem := range v {
+			if cmdItem != nil {
+				flushCmds(e, cmdItem)
+			}
+		}
+	default:
+		nextCmd := e.Update(v)
+		flushCmds(e, nextCmd)
+	}
+}
 
 func TestNewEngine(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "lazytest-engine-test")
@@ -196,7 +219,8 @@ func TestSmartQueueing(t *testing.T) {
 	// Simulate a change to test1 (which should only affect test1 itself)
 	// Since we don't have a real graph with dependencies, this will queue only test1
 	msg := WatcherMsg(test1)
-	_ = e.Update(msg) // Call Update, which returns a tea.Cmd
+	cmd := e.Update(msg)
+	flushCmds(e, cmd)
 
 	// Verify only test1 is queued (not test2 or test3)
 	if len(e.State.Queue) != 1 {
@@ -208,7 +232,8 @@ func TestSmartQueueing(t *testing.T) {
 
 	// Verify that test1 is NOT queued again if we send the same message
 	msg = WatcherMsg(test1)
-	_ = e.Update(msg)
+	cmd = e.Update(msg)
+	flushCmds(e, cmd)
 	if len(e.State.Queue) != 1 {
 		t.Errorf("Expected queue to remain length 1 (deduplication), got %d", len(e.State.Queue))
 	}
@@ -219,7 +244,8 @@ func TestSmartQueueing(t *testing.T) {
 	// Now simulate a change to a file that isn't watched
 	// This should queue nothing (since no watched files depend on it in our empty graph)
 	msg = WatcherMsg("/tmp/some-source.js")
-	_ = e.Update(msg)
+	cmd = e.Update(msg)
+	flushCmds(e, cmd)
 
 	if len(e.State.Queue) != 0 {
 		t.Errorf("Expected queue to be empty for unrelated file change, got %d items: %v", len(e.State.Queue), e.State.Queue)
@@ -364,7 +390,8 @@ func TestSmartMode(t *testing.T) {
 	e.State.RunningNodes["/tmp/dummy.test.ts"] = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
 
 	// Simulate a file-change event on the source file
-	_ = e.Update(WatcherMsg(sourceFile))
+	cmd := e.Update(WatcherMsg(sourceFile))
+	flushCmds(e, cmd)
 
 	// The test file should have been auto-queued even though it was never watched
 	if len(e.State.Queue) != 1 {
@@ -438,7 +465,8 @@ func TestConfigChangeHandling(t *testing.T) {
 	}
 
 	// Trigger config change event
-	_ = e.Update(WatcherMsg(configFile))
+	cmd := e.Update(WatcherMsg(configFile))
+	flushCmds(e, cmd)
 
 	// Verify config reload
 	if e.ProjectConfig.Command != "vitest" {
@@ -499,7 +527,8 @@ func TestConfigChangeHandling_SmartMode(t *testing.T) {
 	// Pin a running node
 	e.State.RunningNodes["/tmp/dummy.test.ts"] = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
 
-	_ = e.Update(WatcherMsg(pkgFile))
+	cmd := e.Update(WatcherMsg(pkgFile))
+	flushCmds(e, cmd)
 
 	// Verify both test files discovered in the graph are enqueued
 	totalQueuedOrRunning := len(e.State.Queue) + len(e.State.RunningNodes)
@@ -738,7 +767,8 @@ func TestAffectedPopulatedOnEnqueue(t *testing.T) {
 	// Pin a running node so the queue won't be consumed immediately
 	e.State.RunningNodes["/tmp/dummy.test.ts"] = &filesystem.Node{Path: "/tmp/dummy.test.ts"}
 
-	_ = e.Update(WatcherMsg(sourceFile))
+	cmd := e.Update(WatcherMsg(sourceFile))
+	flushCmds(e, cmd)
 
 	if _, ok := e.State.Affected[testFile]; !ok {
 		t.Errorf("Expected %s to be in State.Affected after enqueue, got %v", testFile, e.State.Affected)

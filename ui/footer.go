@@ -30,5 +30,13 @@ func (m Model) renderFooter() string {
 			Render("[MANUAL]")
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Center, leftComponent, modeLabel)
+	var buildingLabel string
+	if m.engine.State.IsBuildingGraph {
+		buildingLabel = lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "#0284C7", Dark: "#38BDF8"}).
+			Padding(0, 1).
+			Render("⏳ Building Graph...")
+	}
+
+	return lipgloss.JoinHorizontal(lipgloss.Center, leftComponent, buildingLabel, modeLabel)
 }

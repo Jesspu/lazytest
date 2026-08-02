@@ -60,6 +60,7 @@ func (e *Engine) generateWelcome() string {
 
 // Init initializes the engine's side effects.
 func (e *Engine) Init() tea.Cmd {
+	e.State.IsBuildingGraph = true
 	cmds := []tea.Cmd{
 		e.RefreshTree,
 		e.startWatcher,
@@ -100,6 +101,12 @@ func (e *Engine) Update(msg tea.Msg) tea.Cmd {
 
 	case runner.StatusUpdate:
 		return e.handleStatusUpdate(msg)
+
+	case GraphBuildCompleteMsg:
+		return e.handleGraphBuildComplete(msg)
+
+	case GraphUpdateCompleteMsg:
+		return e.handleGraphUpdateComplete(msg)
 	}
 
 	return nil
@@ -129,9 +136,39 @@ func (e *Engine) handleConfigChange(path string) tea.Cmd {
 	e.ProjectConfig = runner.LoadConfig(e.State.RootPath)
 	e.Workspaces = runner.DiscoverWorkspaces(e.State.RootPath)
 
-	// 2. Rebuild graph as paths/aliases might have changed (e.g. tsconfig.json)
+	// 2. Rebuild graph asynchronously
 	e.Graph = analysis.NewGraphWithRoot(e.State.RootPath)
-	_ = e.Graph.Build(e.State.RootPath)
+	e.State.IsBuildingGraph = true
+
+	return tea.Batch(
+		e.RefreshTree,
+		e.waitForWatcherEvents,
+		func() tea.Msg {
+			e.Graph.Build(e.State.RootPath)
+			return GraphBuildCompleteMsg{ConfigPath: path}
+		},
+	)
+}
+
+func (e *Engine) handleSourceChange(path string) tea.Cmd {
+	e.State.IsBuildingGraph = true
+
+	return tea.Batch(
+		e.RefreshTree,
+		e.waitForWatcherEvents,
+		func() tea.Msg {
+			// Update dependency graph
+			e.Graph.Update(path)
+			return GraphUpdateCompleteMsg{SourcePath: path}
+		},
+	)
+}
+
+func (e *Engine) handleGraphBuildComplete(msg GraphBuildCompleteMsg) tea.Cmd {
+	e.State.IsBuildingGraph = false
+	if msg.ConfigPath == "" {
+		return nil // Just initialization
+	}
 
 	// 3. Queue all watched tests (or all tests in Smart Mode) for re-execution
 	var testsToQueue []string
@@ -148,7 +185,7 @@ func (e *Engine) handleConfigChange(path string) tea.Cmd {
 	}
 	sort.Strings(testsToQueue)
 
-	msgStr := fmt.Sprintf("\nConfig change detected (%s). Reloaded settings and re-queued tests.\n", filepath.Base(path))
+	msgStr := fmt.Sprintf("\nConfig change detected (%s). Reloaded settings and re-queued tests.\n", filepath.Base(msg.ConfigPath))
 	for nodePath := range e.State.RunningNodes {
 		e.State.TestOutputs[nodePath] = append(e.State.TestOutputs[nodePath], msgStr)
 	}
@@ -160,12 +197,12 @@ func (e *Engine) handleConfigChange(path string) tea.Cmd {
 		nodes = append(nodes, filesystem.NodeFromPath(testPath))
 	}
 
-	return tea.Batch(e.RefreshTree, e.enqueueNodes(nodes), e.waitForWatcherEvents)
+	return e.enqueueNodes(nodes)
 }
 
-func (e *Engine) handleSourceChange(path string) tea.Cmd {
-	// Update dependency graph
-	e.Graph.Update(path)
+func (e *Engine) handleGraphUpdateComplete(msg GraphUpdateCompleteMsg) tea.Cmd {
+	e.State.IsBuildingGraph = false
+	path := msg.SourcePath
 
 	var testsToQueue []string
 	if e.State.SmartMode {
@@ -197,7 +234,7 @@ func (e *Engine) handleSourceChange(path string) tea.Cmd {
 		nodes = append(nodes, filesystem.NodeFromPath(testPath))
 	}
 
-	return tea.Batch(e.RefreshTree, e.enqueueNodes(nodes), e.waitForWatcherEvents)
+	return e.enqueueNodes(nodes)
 }
 
 func (e *Engine) handleOutputUpdate(msg runner.OutputUpdate) tea.Cmd {
@@ -284,7 +321,7 @@ func (e *Engine) waitForUpdates() tea.Msg {
 
 func (e *Engine) buildGraph() tea.Msg {
 	e.Graph.Build(e.State.RootPath)
-	return nil
+	return GraphBuildCompleteMsg{ConfigPath: ""}
 }
 
 // Close stops background routines like the file watcher and running processes.

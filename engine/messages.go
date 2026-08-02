@@ -31,3 +31,13 @@ type ClearNotificationMsg struct {
 	ID int
 }
 
+// GraphBuildCompleteMsg indicates the dependency graph has finished building.
+type GraphBuildCompleteMsg struct {
+	ConfigPath string
+}
+
+// GraphUpdateCompleteMsg indicates the dependency graph has finished updating for a file.
+type GraphUpdateCompleteMsg struct {
+	SourcePath string
+}
+
