@@ -75,8 +75,11 @@ func (w *Watcher) Close() {
 }
 
 func (w *Watcher) startLoop() {
-	var timer *time.Timer
 	debounceDuration := 100 * time.Millisecond
+	timer := time.NewTimer(debounceDuration)
+	if !timer.Stop() {
+		<-timer.C
+	}
 
 	for {
 		select {
@@ -107,31 +110,18 @@ func (w *Watcher) startLoop() {
 				continue
 			}
 
-			// Accumulate the path into the pending set before resetting the timer.
-			// This ensures no path is dropped when multiple files change within the
-			// debounce window (e.g. git checkout, IDE bulk-save).
 			w.mu.Lock()
 			w.pendingPaths[event.Name] = struct{}{}
 			w.mu.Unlock()
 
-			// Reset the debounce timer. When it fires, all accumulated paths are
-			// flushed to w.Events in one pass.
-			if timer != nil {
-				timer.Stop()
+			// Safely reset timer
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
 			}
-			timer = time.AfterFunc(debounceDuration, func() {
-				w.mu.Lock()
-				pathsToEmit := make([]string, 0, len(w.pendingPaths))
-				for path := range w.pendingPaths {
-					pathsToEmit = append(pathsToEmit, path)
-				}
-				w.pendingPaths = make(map[string]struct{}) // Reset for next batch
-				w.mu.Unlock()
-
-				for _, path := range pathsToEmit {
-					w.Events <- path
-				}
-			})
+			timer.Reset(debounceDuration)
 
 		case err, ok := <-w.fsWatcher.Errors:
 			if !ok {
@@ -140,6 +130,19 @@ func (w *Watcher) startLoop() {
 			select {
 			case w.Errors <- err:
 			default:
+			}
+
+		case <-timer.C:
+			w.mu.Lock()
+			pathsToEmit := make([]string, 0, len(w.pendingPaths))
+			for path := range w.pendingPaths {
+				pathsToEmit = append(pathsToEmit, path)
+			}
+			w.pendingPaths = make(map[string]struct{}) // Reset for next batch
+			w.mu.Unlock()
+
+			for _, path := range pathsToEmit {
+				w.Events <- path
 			}
 		}
 	}

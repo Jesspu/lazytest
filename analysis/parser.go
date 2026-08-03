@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // Parser handles parsing of source files to extract dependencies.
@@ -12,6 +13,10 @@ type Parser struct {
 	// root is the project root used for locating tsconfig.json.
 	// Empty string means alias resolution is skipped.
 	root string
+
+	// dirCache caches os.ReadDir results to avoid repeated I/O for case-sensitive lookups.
+	// Map key: directory path (string). Map value: []os.DirEntry.
+	dirCache sync.Map
 }
 
 // NewParser creates a new Parser without a project root (alias resolution disabled).
@@ -190,10 +195,17 @@ func (p *Parser) findFile(pathWithoutExt string) (string, bool) {
 			dir := filepath.Dir(fullPath)
 			base := filepath.Base(fullPath)
 
-			entries, err := os.ReadDir(dir)
-			if err != nil {
-				// Fallback to fullPath if we can't read dir
-				return fullPath, true
+			var entries []os.DirEntry
+			if cached, ok := p.dirCache.Load(dir); ok {
+				entries = cached.([]os.DirEntry)
+			} else {
+				var err error
+				entries, err = os.ReadDir(dir)
+				if err != nil {
+					// Fallback to fullPath if we can't read dir
+					return fullPath, true
+				}
+				p.dirCache.Store(dir, entries)
 			}
 
 			for _, entry := range entries {
