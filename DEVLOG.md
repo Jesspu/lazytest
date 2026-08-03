@@ -3,6 +3,7 @@
 This log tracks the implementation of major features and structural changes based on the project plans.
 
 ### 2026-08-02
+- **Data Structure Optimization**: Refactored `GetAffectedDependents` to return $O(1)$ maps instead of slices to eliminate a nested loop during watch events, and implemented a cached `SortedAffected` slice in the engine state to remove redundant sorting allocations from the UI render loop.
 - **Incremental Directory Updates**: Refactored the file tree to use an $O(1)$ `ChildrenMap` and replaced full disk crawls on file changes with incremental, in-memory tree mutations to eliminate GC pressure and disk I/O bottlenecks.
 - **Asynchronous Graph Building**: Refactored the dependency graph building and updating logic to execute asynchronously in the background. Added a `⏳ Building Graph...` indicator in the UI footer and new Bubbletea message types to prevent terminal freezing when analyzing large monorepos.
 - **Output Concatenation and UI Blocking Fix**: Refactored the engine's test output data structure to use string slices instead of continuous string concatenation, and implemented a UI debouncer to prevent terminal freezing during heavy test output streaming.
