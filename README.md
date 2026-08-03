@@ -15,6 +15,8 @@ While it defaults to **Jest**, LazyTest is **test-runner agnostic** and can be c
 *   **Suite Stats Badge**: In Smart Mode, a live stats badge appears above the output view showing progress (e.g., `⚡ SMART MODE | N Passed • N Failed • N Running`).
 *   **Smart Test Selection (Manual Mode)**: Use `a` to add tests related to currently changed source files (via `git diff`) to your watched list in one keypress.
 *   **Parallel Execution**: Run multiple tests concurrently to drastically speed up execution time. The concurrency limit intelligently defaults to half your CPU threads.
+*   **Mouse Support**: Comprehensive mouse support for pane selection, tab switching, double-click test execution, and native scrolling.
+*   **Error Notifications**: Non-blocking toast notifications for background errors and subsystem failures.
 *   **File Watching**: Automatically detects new test files and updates the tree in real-time.
 *   **Context Awareness**: Automatically finds the nearest `package.json` to run tests in the correct context (perfect for monorepos).
 *   **Status Indicators**: Visual feedback for running (⏳), passed (✅), and failed (❌) tests.
@@ -48,6 +50,12 @@ Navigate to your project directory and run the binary:
 
 ```bash
 ./lazytest
+```
+
+You can optionally specify a target directory, or use the `--notify` flag to display an initial message:
+
+```bash
+./lazytest [path/to/project] [--notify "Startup message"]
 ```
 
 (Optional) Move the binary to your PATH:

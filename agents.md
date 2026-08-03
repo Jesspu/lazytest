@@ -22,7 +22,9 @@ The project follows a modular architecture separating presentation, engine coord
   - `badge.go`: Smart Mode footer badge rendering and dynamic keybinding swaps.
   - `sync.go`: Viewport synchronization and tab list resolution.
   - `keys.go`: Keybinding definitions, including dynamic bindings for Smart Mode (`RunFailures`, `AddRelated` / `RunSuite`).
+  - `mouse.go`: Mouse event handling for pane selection, scrolling, and test execution.
   - `footer.go`, `help.go`, `styles.go`: Component rendering and lipgloss styles.
+  - `utils.go`: Common utility functions for UI.
 - **`analysis/`**: Static analysis engine for JavaScript and TypeScript projects.
   - `graph.go`: Builds forward and reverse dependency graphs with concurrent worker pools. Distinguishes regular vs. mocked imports.
   - `parser.go`: Parses import/require statements across JS, JSX, TS, and TSX files.
@@ -31,12 +33,14 @@ The project follows a modular architecture separating presentation, engine coord
   - `runner.go`: Manages subprocess execution (`exec.Cmd`), output streaming via channels, context cancellation, and OS-specific process attributes.
   - `job.go`: Prepares test jobs (`TestJob`), matching path overrides and command templates.
   - `config.go`: Resolves workspace roots and project config (`.lazytest.json`).
+  - `workspace.go`: Monorepo workspace discovery and package-level configurations.
 - **`filesystem/`**: File system operations and events.
   - `walker.go`: Scans directory trees into `Node` hierarchies.
   - `watcher.go`: Monitors workspace file changes with debouncing using `fsnotify`.
   - `git.go`: Git diff operations to identify modified source files (`git status --porcelain`) for Smart Test Selection.
   - `stream.go`: Channel-based concurrent file walking.
   - `predicates.go`: Test file pattern detection and `IsConfigFile()` predicates.
+- **`e2e/`**: End-to-end testing suite using `teatest` to validate UI and Engine flows.
 - **`plans/`**: Documentation of feature plans, codebase reviews, and architectural decisions.
 
 ## Development & Testing Guidelines
@@ -45,6 +49,7 @@ The project follows a modular architecture separating presentation, engine coord
 - **Build**: `go build -o lazytest .`
 - **Run**: `./lazytest`
 - **Test All Packages**: `go test ./...`
+- **E2E Tests**: `go test -p 1 ./e2e/...` (Must be run sequentially/one at a time)
 
 ### Dependencies
 - **Go**: 1.21+
