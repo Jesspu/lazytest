@@ -38,7 +38,11 @@ func TestGraph(t *testing.T) {
 
 	// Test GetAffectedDependents for utils.ts
 	utilsPath := filepath.Join(tmpDir, "utils.ts")
-	dependents := g.GetAffectedDependents(utilsPath)
+	dependentsMap := g.GetAffectedDependents(utilsPath)
+	var dependents []string
+	for k := range dependentsMap {
+		dependents = append(dependents, k)
+	}
 
 	expected := []string{
 		filepath.Join(tmpDir, "component.ts"),
@@ -99,7 +103,11 @@ func TestGraph_RelativeImports(t *testing.T) {
 
 	// Test GetAffectedDependents for src/app.tsx
 	appPath := filepath.Join(tmpDir, "src/app.tsx")
-	dependents := g.GetAffectedDependents(appPath)
+	dependentsMap := g.GetAffectedDependents(appPath)
+	var dependents []string
+	for k := range dependentsMap {
+		dependents = append(dependents, k)
+	}
 
 	expected := []string{
 		filepath.Join(tmpDir, "test/app.test.tsx"),
@@ -154,7 +162,11 @@ func TestGraph_CaseSensitivity(t *testing.T) {
 	// Test GetAffectedDependents for src/App.tsx
 	// Note: We query with the actual file path (TitleCase) because that's what the UI/Walker would provide.
 	appPath := filepath.Join(tmpDir, "src/App.tsx")
-	dependents := g.GetAffectedDependents(appPath)
+	dependentsMap := g.GetAffectedDependents(appPath)
+	var dependents []string
+	for k := range dependentsMap {
+		dependents = append(dependents, k)
+	}
 
 	expected := []string{
 		filepath.Join(tmpDir, "test/app.test.tsx"),
@@ -196,7 +208,11 @@ func TestGraph_Update(t *testing.T) {
 	bPath := filepath.Join(tmpDir, "b.ts")
 
 	// Verify initial dependency
-	deps := g.GetAffectedDependents(aPath)
+	depsMap := g.GetAffectedDependents(aPath)
+	var deps []string
+	for k := range depsMap {
+		deps = append(deps, k)
+	}
 	if len(deps) != 1 || deps[0] != bPath {
 		t.Errorf("Initial: Expected b.ts to depend on a.ts, got %v", deps)
 	}
@@ -208,7 +224,11 @@ func TestGraph_Update(t *testing.T) {
 	}
 	g.Update(bPath)
 
-	deps = g.GetAffectedDependents(aPath)
+	depsMap = g.GetAffectedDependents(aPath)
+	deps = nil
+	for k := range depsMap {
+		deps = append(deps, k)
+	}
 	if len(deps) != 0 {
 		t.Errorf("After removal: Expected no dependents for a.ts, got %v", deps)
 	}
@@ -219,7 +239,11 @@ func TestGraph_Update(t *testing.T) {
 	}
 	g.Update(bPath)
 
-	deps = g.GetAffectedDependents(aPath)
+	depsMap = g.GetAffectedDependents(aPath)
+	deps = nil
+	for k := range depsMap {
+		deps = append(deps, k)
+	}
 	if len(deps) != 1 || deps[0] != bPath {
 		t.Errorf("After re-add: Expected b.ts to depend on a.ts, got %v", deps)
 	}
@@ -251,7 +275,11 @@ func TestGraph_Update(t *testing.T) {
 	g.Update(dPath) // This should trigger resolution of pending import from c.ts
 
 	// Verify c.ts depends on d.ts
-	dDeps := g.GetAffectedDependents(dPath)
+	dDepsMap := g.GetAffectedDependents(dPath)
+	var dDeps []string
+	for k := range dDepsMap {
+		dDeps = append(dDeps, k)
+	}
 	if len(dDeps) != 1 || dDeps[0] != cPath {
 		t.Errorf("After creating d.ts: Expected c.ts to depend on d.ts, got %v", dDeps)
 	}
@@ -549,11 +577,11 @@ func TestGraph_TSAlias(t *testing.T) {
 	}
 
 	utilsPath := filepath.Join(tmpDir, "src/utils.ts")
-	dependents := g.GetAffectedDependents(utilsPath)
+	dependentsMap := g.GetAffectedDependents(utilsPath)
 
 	// Expect src/api.ts and transitively tests/api.test.ts
 	depSet := make(map[string]bool)
-	for _, d := range dependents {
+	for d := range dependentsMap {
 		depSet[d] = true
 	}
 
@@ -561,10 +589,10 @@ func TestGraph_TSAlias(t *testing.T) {
 	testPath := filepath.Join(tmpDir, "tests/api.test.ts")
 
 	if !depSet[apiPath] {
-		t.Errorf("Expected src/api.ts to depend on src/utils.ts; got dependents=%v", dependents)
+		t.Errorf("Expected src/api.ts to depend on src/utils.ts; got dependents=%v", dependentsMap)
 	}
 	if !depSet[testPath] {
-		t.Errorf("Expected tests/api.test.ts to transitively depend on src/utils.ts; got dependents=%v", dependents)
+		t.Errorf("Expected tests/api.test.ts to transitively depend on src/utils.ts; got dependents=%v", dependentsMap)
 	}
 }
 
@@ -610,26 +638,26 @@ jest.mock('./middle');
 	unmockedPath := filepath.Join(tmpDir, "unmocked.test.ts")
 	mockedPath := filepath.Join(tmpDir, "mocked.test.ts")
 
-	affected := g.GetAffectedDependents(leafPath)
+	affectedMap := g.GetAffectedDependents(leafPath)
 
 	affectedSet := make(map[string]bool)
-	for _, p := range affected {
+	for p := range affectedMap {
 		affectedSet[p] = true
 	}
 
 	// middle.ts directly imports leaf.ts and is not mocked — must be included.
 	if !affectedSet[middlePath] {
-		t.Errorf("Expected middle.ts to be in affected dependents of leaf.ts; got %v", affected)
+		t.Errorf("Expected middle.ts to be in affected dependents of leaf.ts; got %v", affectedMap)
 	}
 
 	// unmocked.test.ts imports middle.ts without mocking — must be included.
 	if !affectedSet[unmockedPath] {
-		t.Errorf("Expected unmocked.test.ts to be in affected dependents of leaf.ts; got %v", affected)
+		t.Errorf("Expected unmocked.test.ts to be in affected dependents of leaf.ts; got %v", affectedMap)
 	}
 
 	// mocked.test.ts mocks middle.ts, so changes in leaf.ts should NOT reach it.
 	if affectedSet[mockedPath] {
-		t.Errorf("Expected mocked.test.ts NOT to be in affected dependents of leaf.ts (mock boundary); got %v", affected)
+		t.Errorf("Expected mocked.test.ts NOT to be in affected dependents of leaf.ts (mock boundary); got %v", affectedMap)
 	}
 }
 
@@ -672,7 +700,11 @@ jest.setMock('./utils', {});
 	}
 
 	utilsPath := filepath.Join(tmpDir, "utils.ts")
-	affected := g.GetAffectedDependents(utilsPath)
+	affectedMap := g.GetAffectedDependents(utilsPath)
+	var affected []string
+	for k := range affectedMap {
+		affected = append(affected, k)
+	}
 
 	realTestPath := filepath.Join(tmpDir, "real.test.ts")
 	mockedTestPath := filepath.Join(tmpDir, "mocked.test.ts")

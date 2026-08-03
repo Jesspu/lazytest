@@ -208,6 +208,7 @@ func (e *Engine) handleGraphBuildComplete(msg GraphBuildCompleteMsg) tea.Cmd {
 		e.State.Affected[testPath] = struct{}{}
 		nodes = append(nodes, filesystem.NodeFromPath(testPath))
 	}
+	e.UpdateSortedAffected()
 
 	return e.enqueueNodes(nodes)
 }
@@ -226,12 +227,7 @@ func (e *Engine) handleGraphUpdateComplete(msg GraphUpdateCompleteMsg) tea.Cmd {
 		for watchedPath := range e.State.Watched {
 			affected := watchedPath == path
 			if !affected {
-				for _, dep := range dependents {
-					if dep == watchedPath {
-						affected = true
-						break
-					}
-				}
+				_, affected = dependents[watchedPath]
 			}
 			if affected {
 				testsToQueue = append(testsToQueue, watchedPath)
@@ -245,6 +241,7 @@ func (e *Engine) handleGraphUpdateComplete(msg GraphUpdateCompleteMsg) tea.Cmd {
 		e.State.Affected[testPath] = struct{}{}
 		nodes = append(nodes, filesystem.NodeFromPath(testPath))
 	}
+	e.UpdateSortedAffected()
 
 	return e.enqueueNodes(nodes)
 }
@@ -265,6 +262,8 @@ func (e *Engine) handleStatusUpdate(msg runner.StatusUpdate) tea.Cmd {
 		}
 		delete(e.State.RunningNodes, msg.FilePath)
 	}
+
+	e.UpdateSortedAffected()
 
 	// Process queue
 	cmd := e.ProcessQueue()

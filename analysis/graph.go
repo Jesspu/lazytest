@@ -166,12 +166,12 @@ func (g *Graph) Update(path string) {
 //	GetAffectedDependents("leaf.ts") returns [middle.ts] only.
 //	mocked.test.ts is excluded because it mocks middle.ts, insulating itself
 //	from changes in leaf.ts.
-func (g *Graph) GetAffectedDependents(path string) []string {
+func (g *Graph) GetAffectedDependents(path string) map[string]struct{} {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
 	visited := make(map[string]bool)
-	var dependents []string
+	dependents := make(map[string]struct{})
 
 	queue := []string{path}
 	visited[path] = true
@@ -191,7 +191,7 @@ func (g *Graph) GetAffectedDependents(path string) []string {
 						continue
 					}
 
-					dependents = append(dependents, dep)
+					dependents[dep] = struct{}{}
 					queue = append(queue, dep)
 				}
 			}

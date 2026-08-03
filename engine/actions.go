@@ -25,9 +25,11 @@ func (e *Engine) TriggerTest(node *filesystem.Node) tea.Cmd {
 		e.State.TestOutputs[node.Path] = append(e.State.TestOutputs[node.Path], "Error: Could not find package.json\n")
 		e.State.NodeStatus[node.Path] = StatusFail
 		delete(e.State.RunningNodes, node.Path)
+		e.UpdateSortedAffected()
 		return nil
 	}
 
+	e.UpdateSortedAffected()
 	return func() tea.Msg {
 		e.runner.Run(job.Command, job.Args, job.Root, node.Path)
 		return nil
@@ -89,7 +91,7 @@ func (e *Engine) FindRelatedTests(path string) []string {
 	// GetAffectedDependents already prunes branches where the dependent mocks
 	// the intermediate module, so no additional depType check is needed here.
 	dependents := e.Graph.GetAffectedDependents(path)
-	for _, dep := range dependents {
+	for dep := range dependents {
 		if !seen[dep] && filesystem.IsTestFileByPath(dep) {
 			tests = append(tests, dep)
 			seen[dep] = true

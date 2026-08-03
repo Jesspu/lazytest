@@ -17,6 +17,11 @@ import (
 //
 // Within each group paths are sorted alphabetically.
 func (e *Engine) GetAffectedSuite() []string {
+	return e.State.SortedAffected
+}
+
+// UpdateSortedAffected rebuilds and sorts the cached SortedAffected slice.
+func (e *Engine) UpdateSortedAffected() {
 	result := make([]string, 0, len(e.State.Affected))
 	for path := range e.State.Affected {
 		result = append(result, path)
@@ -44,7 +49,7 @@ func (e *Engine) GetAffectedSuite() []string {
 		return result[i] < result[j]
 	})
 
-	return result
+	e.State.SortedAffected = result
 }
 
 // GetSuiteStats returns the count of passed, failed, and running tests
@@ -74,6 +79,7 @@ func (e *Engine) ClearAffectedSuite() {
 			delete(e.State.Affected, path)
 		}
 	}
+	e.UpdateSortedAffected()
 }
 
 // RunSuiteFailures queues all tests in the Affected suite that are currently

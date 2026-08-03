@@ -566,7 +566,7 @@ func TestGetAffectedSuite_Sorting(t *testing.T) {
 	e.State.NodeStatus[running] = StatusRunning
 	e.State.NodeStatus[pass] = StatusPass
 	// idle has no status set (StatusIdle / zero value)
-
+	e.UpdateSortedAffected()
 	suite := e.GetAffectedSuite()
 
 	if len(suite) != 4 {
@@ -599,6 +599,7 @@ func TestGetAffectedSuite_AlphabeticalTieBreak(t *testing.T) {
 	e.State.Affected[a] = struct{}{}
 	e.State.NodeStatus[a] = StatusFail
 	e.State.NodeStatus[b] = StatusFail
+	e.UpdateSortedAffected()
 
 	suite := e.GetAffectedSuite()
 	if len(suite) != 2 {

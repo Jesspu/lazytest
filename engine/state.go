@@ -24,6 +24,7 @@ type State struct {
 	Tree     *filesystem.Node
 	Watched  map[string]struct{}
 	Affected map[string]struct{}
+	SortedAffected []string
 
 	// Test Execution State
 	Queue       []string
@@ -49,9 +50,10 @@ func NewState(rootPath string) State {
 		RootPath:     rootPath,
 		NodeStatus:   make(map[string]TestStatus),
 		TestOutputs:  make(map[string][]string),
-		Watched:      make(map[string]struct{}),
-		Affected:     make(map[string]struct{}),
-		Queue:        make([]string, 0),
+		Watched:        make(map[string]struct{}),
+		Affected:       make(map[string]struct{}),
+		SortedAffected: make([]string, 0),
+		Queue:          make([]string, 0),
 		RunningNodes: make(map[string]*filesystem.Node),
 	}
 }
